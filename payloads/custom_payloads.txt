@@ -1,0 +1,17 @@
+https://{target_domain}@evil.com
+https://evil.com/?redir={target_domain}
+javascript:window.location='{target_domain}'
+data:text/html;base64,PHNjcmlwdD53aW5kb3cubG9jYXRpb249Imh0dHBzOi8ve3RhcmdldF9kb21haW59Ijwvc2NyaXB0Pg==
+//{target_domain}/%2f%2e%2e
+/%09/{target_domain}
+//%e2%80%ae@{target_domain}
+//%00{target_domain}
+/%0a{target_domain}
+/%0d{target_domain}
+https://{target_domain}.evil.com
+https://{target_domain}\@evil.com
+https://evil.com/{target_domain}
+https://{target_domain}%252f@evil.com
+https://{target_domain}%253f@evil.com
+https://{target_domain}%23@evil.com
+https://{target_domain}\\@evil.com

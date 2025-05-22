@@ -1,0 +1,49 @@
+# OpenX Default Configuration
+
+general:
+  verbose: true
+  output_file: openx_report.html
+  output_format: html
+  debug: false
+
+payloads:
+  custom_payload_file: payloads/custom_payloads.txt
+  target_domains:
+    - example.com
+    - evil.com
+  validation_regex: "https?://.*evil\\.com"
+
+browser:
+  enabled: true
+  timeout: 30
+  browser_type: playwright  # or selenium
+  headless: true
+
+auth:
+  enabled: false
+  type: basic  # basic, digest, bearer
+  username: user
+  password: pass
+  token: your_bearer_token
+
+proxy:
+  url: http://proxy.example.com:8080
+  auth_enabled: false
+
+performance:
+  concurrency: 10
+  delay: 0.5
+  timeout: 10
+  retries: 3
+
+user_agent:
+  custom: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+  rotation: true
+  
+waf_evasion:
+  enabled: false
+  techniques:
+    - url_encoding
+    - double_encoding
+    - case_randomization
+    - path_manipulation
