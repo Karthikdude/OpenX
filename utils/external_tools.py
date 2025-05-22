@@ -84,6 +84,9 @@ class ExternalToolManager:
             # URL Filtering
             'gf': False,
             
+            # URL Deduplication
+            'uro': False,
+            
             # HTTP Probing
             'httpx': False,
             'httprobe': False
@@ -378,6 +381,56 @@ class ExternalToolManager:
         
         return filtered_urls
     
+    def deduplicate_urls(self, urls: Set[str]) -> Set[str]:
+        """
+        Deduplicate and normalize URLs using uro if available
+        
+        Args:
+            urls (Set[str]): Set of URLs to deduplicate
+            
+        Returns:
+            Set[str]: Set of deduplicated URLs
+        """
+        if not urls:
+            return set()
+            
+        # Check if uro is available
+        if not self.available_tools['uro']:
+            logger.warning("Uro is not available. Skipping URL deduplication phase.")
+            return urls  # Return original URLs if uro is not available
+        
+        logger.info(f"Starting URL deduplication for {len(urls)} URLs using uro")
+        
+        # Create temporary file with URLs
+        urls_file = os.path.join(self.temp_dir, "urls_to_deduplicate.txt")
+        with open(urls_file, 'w') as f:
+            for url in urls:
+                f.write(f"{url}\n")
+        
+        # Run uro for deduplication
+        output_file = os.path.join(self.temp_dir, "deduplicated_urls.txt")
+        command = ["uro", "-i", urls_file, "-o", output_file]
+        success, stdout, stderr = self._run_command(command)
+        
+        deduplicated_urls = set()
+        
+        if success:
+            # Read deduplicated URLs from output file
+            if os.path.exists(output_file):
+                with open(output_file, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            deduplicated_urls.add(line)
+            
+            logger.info(f"Deduplicated {len(urls)} URLs to {len(deduplicated_urls)} unique URLs using uro")
+        else:
+            logger.error(f"Failed to run uro: {stderr}")
+            deduplicated_urls = urls  # Return original URLs if uro fails
+        
+        self.results['deduplicated_urls'] = deduplicated_urls
+        return deduplicated_urls
+    
     async def probe_live_urls(self, urls: Set[str]) -> Set[str]:
         """
         Probe URLs to check if they are live
@@ -495,7 +548,8 @@ class ExternalToolManager:
         Process a domain through the entire pipeline:
         1. Collect URLs
         2. Filter for redirect patterns
-        3. Probe for live URLs
+        3. Deduplicate URLs
+        4. Probe for live URLs
         
         Args:
             domain (str): Target domain
@@ -511,11 +565,15 @@ class ExternalToolManager:
         # Step 2: Filter for redirect patterns
         filtered_urls = self.filter_redirect_urls(collected_urls)
         
-        # Step 3: Probe for live URLs
-        live_urls = await self.probe_live_urls(filtered_urls)
+        # Step 3: Deduplicate URLs
+        deduplicated_urls = self.deduplicate_urls(filtered_urls)
+        
+        # Step 4: Probe for live URLs
+        live_urls = await self.probe_live_urls(deduplicated_urls)
         
         logger.info(f"External tools pipeline completed for domain: {domain}")
-        logger.info(f"Results: {len(collected_urls)} collected, {len(filtered_urls)} filtered, {len(live_urls)} live")
+        logger.info(f"Results: {len(collected_urls)} collected, {len(filtered_urls)} filtered, "
+                  f"{len(deduplicated_urls)} deduplicated, {len(live_urls)} live")
         
         return self.results
     

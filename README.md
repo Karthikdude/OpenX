@@ -46,7 +46,7 @@ Version 2.0 introduces major enhancements including external tools integration, 
 ### New in Version 2.0
 
 - **External Tools Integration**
-  - Passive URL collection using tools like waybackurls, gau, and urlfinder
+  - Passive URL collection using tools like waybackurls, gau, urlfinder, and uro
   - URL filtering with gf patterns for redirect parameters
   - HTTP probing with httpx and httprobe
   - Environment-aware detection of available tools
@@ -71,6 +71,10 @@ Version 2.0 introduces major enhancements including external tools integration, 
   - Passive reconnaissance → Filtering → Probing → Active Scanning
   - Each phase can be enabled or disabled independently
   - Graceful fallbacks when external tools aren't available
+
+- **Intelligent Analysis**
+  - Uses rule-based scoring heuristics to prioritize high-risk URLs
+  - Assigns scores based on various factors like common redirect parameters, URL in parameter value, protocol-relative URLs, etc.
 
 ## Installation
 
@@ -112,6 +116,7 @@ OpenX v2.0 can integrate with these external tools if they're available in your 
 go install github.com/tomnomnom/waybackurls@latest
 go install github.com/lc/gau/v2/cmd/gau@latest
 go install github.com/mr-pmillz/urlfinder@latest
+go install github.com/sensepost/uro@latest
 
 # URL Filtering
 go install github.com/tomnomnom/gf@latest
@@ -167,6 +172,12 @@ python opex.py -l urls.txt --concurrency 50
 
 # Generate HTML report
 python opex.py -l urls.txt --report-format html
+
+# Use intelligent analysis to prioritize high-risk URLs
+python opex.py -d example.com --use-external-tools --intelligent-analysis
+
+# Set minimum risk level for intelligent analysis
+python opex.py -d example.com --use-external-tools --intelligent-analysis --min-risk-level medium
 ```
 
 ### External Tools Integration (v2.0)
@@ -249,6 +260,41 @@ Example configuration file (config.json):
 | `--skip-filtering` | Skip URL filtering phase |
 | `--skip-probing` | Skip HTTP probing phase |
 | `--tools-output` | Output file for collected URLs |
+
+### Intelligent Analysis Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `--intelligent-analysis` | Use intelligent analysis to prioritize high-risk URLs |
+| `--min-risk-level` | Minimum risk level to include in scanning (info, low, medium, high) |
+
+## Intelligent Analysis
+
+OpenX includes an intelligent analysis module that uses rule-based scoring heuristics to prioritize URLs for scanning. This helps focus on high-risk URLs first and reduces false positives.
+
+### Risk Scoring
+
+The intelligent analyzer assigns scores to URLs based on various factors:
+
+- **Common Redirect Parameters**: URLs containing parameters like `url`, `redirect`, `next`, etc.
+- **URL in Parameter Value**: Parameter values starting with `http://` or `https://`
+- **Protocol-Relative URLs**: Parameter values starting with `//`
+- **Blacklisted Domains**: Parameter values containing known malicious domains
+- **Encoded Characters**: Parameter values containing URL-encoded characters
+- **Base64-Encoded Content**: Parameter values containing possible base64-encoded URLs
+- **Multiple Redirect Parameters**: URLs with multiple potential redirect parameters
+- **Path Traversal Sequences**: Parameter values containing `../` or similar
+- **JavaScript Protocol**: Parameter values containing `javascript:` protocol
+- **Data URI Scheme**: Parameter values containing `data:` URI scheme
+
+### Risk Levels
+
+URLs are categorized into four risk levels based on their total score:
+
+- **High Risk**: Score >= 8
+- **Medium Risk**: Score >= 5 and < 8
+- **Low Risk**: Score >= 3 and < 5
+- **Info**: Score < 3
 
 ## Examples
 
@@ -361,6 +407,8 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Created modular scanning pipeline with graceful fallbacks
 - Added example scripts for different use cases
 - Improved documentation and project structure
+- Added uro tool integration for URL deduplication
+- Added intelligent analysis with rule-based scoring heuristics
 
 ### Version 1.0 (Initial Release)
 - Core scanning functionality

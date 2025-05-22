@@ -1,31 +1,32 @@
 #!/usr/bin/env python3
 """
-OpenX - Advanced Open Redirect Vulnerability Scanner
+OpenX - Open Redirect Vulnerability Scanner
+Version 2.0
 
-A powerful, modular tool for detecting and verifying open redirect vulnerabilities
-in web applications with advanced detection techniques and comprehensive reporting.
-
-Author: Karthik S Sathyan
-License: MIT
+A powerful and modular tool for detecting open redirect vulnerabilities
+with support for multiple scanning methods and external tool integration.
 """
-import argparse
-import logging
+
 import os
 import sys
+import logging
 import argparse
 import asyncio
-import logging
-from typing import List, Dict, Any, Optional, Set
+import yaml
+from typing import List, Dict, Any, Set, Optional
 from datetime import datetime
-from urllib.parse import urlparse
 
-# Import modules
+# Add the parent directory to sys.path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Import OpenX modules
 from core.scanner import Scanner
-from payloads.payload_manager import PayloadManager
-from reports.report_generator import ReportGenerator
+from utils.crawler import Crawler
+from utils.reporter import Reporter
+from utils.external_tools import ExternalToolManager
+from utils.intelligent_analyzer import IntelligentAnalyzer
 from config.config import Config
 from utils.helpers import read_urls_from_file, save_results_to_file
-from utils.external_tools import ExternalToolManager
 from fake_useragent_data import UserAgentManager
 
 # Banner function
@@ -39,7 +40,7 @@ def print_banner():
 ╚██████╔╝██║     ███████╗██║ ╚████║██╔╝ ██╗
  ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═══╝╚═╝  ╚═╝
 
-OpenX - Advanced Open Redirect Scanner
+OpenX - Open Redirect Scanner
 Developed by Karthik S Sathyan
 """
     print(banner)
@@ -59,7 +60,7 @@ def parse_arguments():
     Returns:
         argparse.Namespace: Parsed arguments
     """
-    parser = argparse.ArgumentParser(description="OpenX - Advanced Open Redirect Scanner")
+    parser = argparse.ArgumentParser(description="OpenX - Open Redirect Scanner")
     
     # Target options
     target_group = parser.add_argument_group("Target")
@@ -101,106 +102,172 @@ def parse_arguments():
     payload_group.add_argument("--target-domains", help="Comma-separated list of target domains")
     
     # External tools options
-    tools_group = parser.add_argument_group("External Tools")
-    tools_group.add_argument("--use-external-tools", action="store_true", help="Use external tools for URL collection and filtering")
-    tools_group.add_argument("--skip-url-collection", action="store_true", help="Skip URL collection phase")
-    tools_group.add_argument("--skip-filtering", action="store_true", help="Skip URL filtering phase")
-    tools_group.add_argument("--skip-probing", action="store_true", help="Skip HTTP probing phase")
-    tools_group.add_argument("--tools-output", help="Output file for collected URLs")
+    external_tools_group = parser.add_argument_group('External Tools Options')
+    external_tools_group.add_argument('--use-external-tools', action='store_true',
+                        help='Use external tools for URL collection, filtering, and probing')
+    external_tools_group.add_argument('--skip-url-collection', action='store_true',
+                        help='Skip URL collection phase when using external tools')
+    external_tools_group.add_argument('--skip-url-filtering', action='store_true',
+                        help='Skip URL filtering phase when using external tools')
+    external_tools_group.add_argument('--skip-url-deduplication', action='store_true',
+                        help='Skip URL deduplication phase when using external tools')
+    external_tools_group.add_argument('--skip-url-probing', action='store_true',
+                        help='Skip URL probing phase when using external tools')
+    
+    # Add arguments for intelligent analysis
+    intelligent_group = parser.add_argument_group('Intelligent Analysis Options')
+    intelligent_group.add_argument('--intelligent-analysis', action='store_true',
+                        help='Use intelligent analysis to prioritize URLs based on risk score')
+    intelligent_group.add_argument('--min-risk-level', choices=['info', 'low', 'medium', 'high'],
+                        default='low', help='Minimum risk level to include in scanning (default: low)')
     
     return parser.parse_args()
 
 # Main function
+async def process_with_external_tools(args, config):
+    """
+    Process targets using external tools for URL collection, filtering, deduplication, and probing
+    
+    Args:
+        args: Command line arguments
+        config: Configuration dictionary
+    
+    Returns:
+        Set[str]: Set of URLs to scan
+    """
+    logger.info("Processing targets with external tools")
+    
+    # Initialize external tool manager
+    external_tool_manager = ExternalToolManager(config)
+    
+    urls_to_scan = set()
+    
+    # Process each target domain
+    for target in args.targets:
+        # Skip URL collection if specified
+        if args.skip_url_collection:
+            logger.info(f"Skipping URL collection for {target}")
+            continue
+        
+        # Process domain through external tools pipeline
+        # Note: The ExternalToolManager will handle the skip flags internally
+        results = await external_tool_manager.process_domain(target)
+        
+        # Add live URLs to the set of URLs to scan
+        if 'live_urls' in results and results['live_urls']:
+            urls_to_scan.update(results['live_urls'])
+    
+    # Add any URLs from the URL list file
+    if args.url_list:
+        with open(args.url_list, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    urls_to_scan.add(line)
+    
+    logger.info(f"Collected {len(urls_to_scan)} URLs to scan using external tools")
+    
+    return urls_to_scan
+
+# Prioritize URLs using intelligent analysis
+async def prioritize_urls_with_intelligent_analysis(urls_to_scan, args, config):
+    """
+    Prioritize URLs using intelligent analysis
+    
+    Args:
+        urls_to_scan (Set[str]): Set of URLs to scan
+        args: Command line arguments
+        config: Configuration dictionary
+    
+    Returns:
+        List[str]: Prioritized list of URLs to scan
+    """
+    logger.info("Prioritizing URLs with intelligent analysis")
+    
+    # Initialize intelligent analyzer
+    analyzer = IntelligentAnalyzer(config)
+    
+    # Analyze and categorize URLs
+    analysis_results = analyzer.analyze_urls(list(urls_to_scan))
+    
+    # Determine which risk levels to include based on min_risk_level
+    risk_levels = ['high', 'medium', 'low', 'info']
+    min_level_index = risk_levels.index(args.min_risk_level)
+    included_levels = risk_levels[:min_level_index + 1]
+    
+    # Combine results in order of priority (high -> medium -> low -> info)
+    prioritized_urls = []
+    for level in included_levels:
+        level_urls = [result['url'] for result in analysis_results[level]]
+        logger.info(f"Found {len(level_urls)} URLs with {level.upper()} risk level")
+        prioritized_urls.extend(level_urls)
+    
+    logger.info(f"Prioritized {len(prioritized_urls)} URLs for scanning (minimum risk level: {args.min_risk_level})")
+    
+    # Log some examples of high and medium risk URLs if available
+    if analysis_results['high'] and logger.level <= logging.INFO:
+        high_risk_examples = [result['url'] for result in analysis_results['high'][:3]]
+        logger.info(f"High risk URL examples: {', '.join(high_risk_examples)}")
+    
+    if analysis_results['medium'] and logger.level <= logging.INFO:
+        medium_risk_examples = [result['url'] for result in analysis_results['medium'][:3]]
+        logger.info(f"Medium risk URL examples: {', '.join(medium_risk_examples)}")
+    
+    return prioritized_urls
+
 async def main():
     """
     Main function
     """
-    # Parse arguments
+    # Parse command line arguments
     args = parse_arguments()
     
     # Set up logging
-    log_level = logging.DEBUG if args.debug_mode else logging.INFO
     logging.basicConfig(
-        level=log_level,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.StreamHandler(sys.stdout)
-        ]
+        level=logging.DEBUG if args.debug_mode else logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
-    
     logger = logging.getLogger('openx')
     
-    # Print banner
+    # Display banner
     print_banner()
     
-    # Load configuration
-    config = Config()
+    # Initialize configuration
+    config = {}
+    if hasattr(args, 'config_file') and args.config_file:
+        try:
+            with open(args.config_file, 'r') as f:
+                config = yaml.safe_load(f)
+        except Exception as e:
+            logger.error(f"Error loading configuration file: {e}")
+            return 1
     
-    if args.config:
-        config.load_from_file(args.config)
-    else:
-        config.load_default_config()
+    # Setup configuration for external tools
+    if args.use_external_tools:
+        config['external_tools'] = {
+            'enabled': True,
+            'skip_url_collection': args.skip_url_collection if hasattr(args, 'skip_url_collection') else False,
+            'skip_url_filtering': args.skip_url_filtering if hasattr(args, 'skip_url_filtering') else False,
+            'skip_url_deduplication': args.skip_url_deduplication if hasattr(args, 'skip_url_deduplication') else False,
+            'skip_url_probing': args.skip_url_probing if hasattr(args, 'skip_url_probing') else False
+        }
     
-    # Override configuration with command line arguments
-    if args.timeout:
-        config.set('performance.timeout', args.timeout)
+    # Setup configuration for intelligent analysis
+    if args.intelligent_analysis:
+        config['intelligent_analysis'] = {
+            'enabled': True,
+            'min_risk_level': args.min_risk_level
+        }
     
-    if args.concurrency:
-        config.set('performance.concurrency', args.concurrency)
-    
-    if args.proxy:
-        config.set('proxy.url', args.proxy)
-    
-    if args.random_user_agent:
-        config.set('user_agent.rotation', True)
-    
-    if args.browser:
-        config.set('browser.enabled', True)
-    
-    # Initialize payload manager
-    payload_manager = PayloadManager(config)
-    
-    # Set target domains if specified
-    if args.target_domains:
-        target_domains = [domain.strip() for domain in args.target_domains.split(',')]
-        payload_manager.set_target_domains(target_domains)
-    
-    # Load custom payloads if specified
-    if args.custom_payloads:
-        payload_manager.load_custom_payloads(args.custom_payloads)
-    
-    # Get URLs to scan
-    urls = []
-    
-    # Use external tools for URL collection if specified
-    if args.use_external_tools and args.domain:
-        logger.info(f"Using external tools for URL collection from domain: {args.domain}")
-        
-        # Initialize external tool manager
-        tool_manager = ExternalToolManager(config.get_config())
-        
-        # Print available tools
-        logger.info("Available external tools:")
-        for tool, available in tool_manager.available_tools.items():
-            status = "Available" if available else "Not available"
-            logger.info(f"  - {tool}: {status}")
-        
-        # Process domain through the external tools pipeline
-        collected_urls: Set[str] = set()
-        filtered_urls: Set[str] = set()
-        live_urls: Set[str] = set()
-        
-        # Step 1: Collect URLs (if not skipped)
-        if not args.skip_url_collection:
-            collected_urls = await tool_manager.collect_urls(args.domain)
-            logger.info(f"Collected {len(collected_urls)} URLs from external tools")
-        else:
-            logger.info("Skipping URL collection phase")
-            # If URL collection is skipped but we have a URL file, use that
-            if args.url_file:
-                collected_urls = set(read_urls_from_file(args.url_file))
-                logger.info(f"Loaded {len(collected_urls)} URLs from file: {args.url_file}")
-        
+    # Setup other configuration options
+    if hasattr(args, 'timeout'):
+        config['timeout'] = args.timeout
+    if hasattr(args, 'concurrency'):
+        config['concurrency'] = args.concurrency
+    if hasattr(args, 'proxy'):
+        config['proxy'] = args.proxy
+    if hasattr(args, 'browser') and args.browser:
+        config['browser'] = {'enabled': True}
         # Step 2: Filter URLs (if not skipped)
         if not args.skip_filtering and collected_urls:
             filtered_urls = tool_manager.filter_redirect_urls(collected_urls)
