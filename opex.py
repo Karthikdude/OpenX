@@ -518,6 +518,11 @@ async def main():
         logger.info(f"Report saved to {args.output}")
     
     return results
+
+def apply_config_settings(config, args):
+    """
+    Apply configuration settings from command line arguments
+    
     Args:
         config (Config): Configuration object
         args (Namespace): Command line arguments
