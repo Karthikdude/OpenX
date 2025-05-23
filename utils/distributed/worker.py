@@ -518,8 +518,8 @@ class Worker:
             s.close()
         return ip
 
-# Run worker if executed directly
-if __name__ == '__main__':
+def main_cli():
+    """Entry point for the command-line tool"""
     import argparse
     
     parser = argparse.ArgumentParser(description='OpenX Distributed Scanning Worker')
@@ -564,3 +564,7 @@ if __name__ == '__main__':
         # Stop worker
         loop.run_until_complete(worker.stop())
         loop.close()
+
+# Run worker if executed directly
+if __name__ == '__main__':
+    main_cli()

@@ -420,5 +420,10 @@ def main():
     except Exception as e:
         print(f"{Fore.RED}Error: {e}{Style.RESET_ALL}")
 
+def main_cli():
+    """Entry point for the command-line tool"""
+    cli = InteractiveCLI()
+    cli.start()
+
 if __name__ == "__main__":
     main()

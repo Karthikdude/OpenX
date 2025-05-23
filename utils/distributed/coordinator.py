@@ -716,8 +716,8 @@ class Coordinator:
             s.close()
         return ip
 
-# Run coordinator if executed directly
-if __name__ == '__main__':
+def main_cli():
+    """Entry point for the command-line tool"""
     import argparse
     
     parser = argparse.ArgumentParser(description='OpenX Distributed Scanning Coordinator')
@@ -755,3 +755,7 @@ if __name__ == '__main__':
         pass
     finally:
         loop.close()
+
+# Run coordinator if executed directly
+if __name__ == '__main__':
+    main_cli()

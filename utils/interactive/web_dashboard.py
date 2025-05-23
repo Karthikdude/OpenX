@@ -708,5 +708,18 @@ async def main():
     finally:
         await runner.cleanup()
 
+def main_cli():
+    """Entry point for the command-line tool"""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='OpenX Web Dashboard')
+    parser.add_argument('--host', default='0.0.0.0', help='Host to bind to')
+    parser.add_argument('--port', type=int, default=8000, help='Port to bind to')
+    
+    args = parser.parse_args()
+    
+    dashboard = WebDashboard()
+    dashboard.start(host=args.host, port=args.port)
+
 if __name__ == "__main__":
     asyncio.run(main())

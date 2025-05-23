@@ -462,8 +462,8 @@ async def main():
     config.config['hide_vuln'] = args.hide_vuln
 
 
-# Entry point
-if __name__ == "__main__":
+# Entry point for command-line tool
+def main_cli():
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
@@ -471,3 +471,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(Fore.RED + f"\nAn error occurred: {e}")
         logging.error(f"Unhandled exception: {e}", exc_info=True)
+
+# Entry point when run directly
+if __name__ == "__main__":
+    main_cli()

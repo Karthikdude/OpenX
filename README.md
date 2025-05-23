@@ -119,11 +119,14 @@ Version 3.0 introduces major enhancements including distributed scanning archite
 
 ```bash
 # Clone the repository
-git clone https://github.com/username/openx.git
-cd openx
+git clone https://github.com/Karthikdude/OpenX.git
+cd OpenX
 
 # Install required dependencies
 pip install -r requirements.txt
+
+# Install OpenX globally (makes 'openx' command available system-wide)
+pip install -e .
 ```
 
 ### Optional Dependencies
@@ -147,8 +150,8 @@ OpenX v2.0 can integrate with these external tools if they're available in your 
 # URL Collection Tools
 go install github.com/tomnomnom/waybackurls@latest
 go install github.com/lc/gau/v2/cmd/gau@latest
-go install github.com/mr-pmillz/urlfinder@latest
-go install github.com/sensepost/uro@latest
+go install github.com/projectdiscovery/urlfinder/cmd/urlfinder@latest
+pip install uro / pipx install uro
 
 # URL Filtering
 go install github.com/tomnomnom/gf@latest
@@ -166,13 +169,10 @@ Note: These tools are optional. OpenX will detect which tools are available and 
 
 ```bash
 # Scan a single URL
-python opex.py -u https://example.com/redirect?url=FUZZ
+openx -u https://example.com/redirect?url=FUZZ
 
 # Scan multiple URLs from a file
-python opex.py -l urls.txt
-
-# Save results to a file
-python opex.py -l urls.txt -o results.txt
+openx -l urls.txt -o results.txt
 ```
 
 ### Advanced Options
@@ -216,13 +216,13 @@ python opex.py -d example.com --use-external-tools --intelligent-analysis --min-
 
 ```bash
 # Use external tools for passive URL collection from a domain
-python opex.py -d example.com --use-external-tools -o report.html
+openx -d example.com --use-external-tools -o report.html
 
 # Skip specific phases of the external tools pipeline
-python opex.py -d example.com --use-external-tools --skip-probing
+openx -d example.com --use-external-tools --skip-probing
 
 # Save collected URLs to a file
-python opex.py -d example.com --use-external-tools --tools-output urls.txt
+openx -d example.com --use-external-tools --tools-output urls.txt
 
 # Use collected URLs with browser verification
 python opex.py -d example.com --use-external-tools --browser
@@ -341,7 +341,7 @@ The `FUZZ` keyword will be replaced with various payloads during testing.
 ### Using Custom Payloads
 
 ```bash
-python opex.py -l urls.txt --custom-payloads my_payloads.txt
+openx -l urls.txt --custom-payloads my_payloads.txt
 ```
 
 Example custom payloads file (my_payloads.txt):
@@ -354,20 +354,20 @@ https://evil.com/
 ### Testing with Authentication
 
 ```bash
-python opex.py -l urls.txt --auth-type basic --auth-username user --auth-password pass
+openx -l urls.txt --auth-type basic --auth-username user --auth-password pass
 ```
 
 ### Generating an HTML Report
 
 ```bash
-python opex.py -l urls.txt --report-format html -o report.html
+openx -l urls.txt --report-format html -o report.html
 ```
 
 ### Using External Tools for Passive Reconnaissance (v2.0)
 
 ```bash
 # Collect URLs from a domain and scan them
-python opex.py -d example.com --use-external-tools -o report.html
+openx -d example.com --use-external-tools -o report.html
 
 # Use the example script for more control
 python examples/passive_recon_scan.py -d example.com -o report.html --browser
@@ -377,57 +377,57 @@ python examples/passive_recon_scan.py -d example.com -o report.html --browser
 
 ```bash
 # Start the coordinator
-python utils/distributed/coordinator.py --host 0.0.0.0 --port 8080
+openx-coordinator --host 0.0.0.0 --port 8080
 
 # Start worker nodes
-python utils/distributed/worker.py --coordinator http://coordinator-ip:8080
+openx-worker --coordinator http://coordinator-ip:8080
 
 # Distribute a scan using the coordinator
-python opex.py -l urls.txt --distributed --coordinator http://coordinator-ip:8080
+openx -l urls.txt --distributed --coordinator http://coordinator-ip:8080
 ```
 
 ### Using Stealth Mode (v3.0)
 
 ```bash
 # Enable stealth mode with traffic mimicking
-python opex.py -l urls.txt --stealth --traffic-mimicking
+openx -l urls.txt --stealth --traffic-mimicking
 
 # Use timing randomization to avoid detection
-python opex.py -l urls.txt --stealth --timing-randomization
+openx -l urls.txt --stealth --timing-randomization
 ```
 
 ### Advanced Analysis (v3.0)
 
 ```bash
 # Generate impact assessment and attack vectors
-python opex.py -l urls.txt --advanced-analysis --generate-poc
+openx -l urls.txt --advanced-analysis --generate-poc
 
 # Perform business logic analysis
-python opex.py -l urls.txt --advanced-analysis --business-logic
+openx -l urls.txt --advanced-analysis --business-logic
 ```
 
 ### Interactive Mode (v3.0)
 
 ```bash
 # Start the interactive CLI
-python utils/interactive/cli_interactive.py
+openx-cli
 
 # Start the web dashboard
-python utils/interactive/web_dashboard.py --port 8000
+openx-dashboard --port 8000
 ```
 
 ### Crawling and Scanning (v2.0)
 
 ```bash
 # Use the crawler utility to discover URLs and scan them
-python examples/crawl_and_scan.py -u https://example.com -d 2 -o report.html
+openx-crawler -u https://example.com -d 2 -o report.html
 ```
 
 ### WAF Evasion Techniques (v2.0)
 
 ```bash
 # Use WAF evasion techniques with specialized user agents
-python examples/waf_evasion_scan.py -u https://example.com/redirect?url= -o report.html --proxy http://127.0.0.1:8080
+openx-waf-bypass -u https://example.com/redirect?url= -o report.html --proxy http://127.0.0.1:8080
 ```
 
 ## Project Structure
