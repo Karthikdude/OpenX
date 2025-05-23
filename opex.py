@@ -438,6 +438,22 @@ async def main():
             'skip_url_deduplication': args.skip_url_deduplication if hasattr(args, 'skip_url_deduplication') else False,
             'skip_url_probing': args.skip_url_probing if hasattr(args, 'skip_url_probing') else False
         }
+        
+        # If domain is specified, use it for external tools processing
+        if args.domain:
+            # Initialize external tool manager
+            tool_manager = ExternalToolManager(config)
+            logger.info(f"Processing domain with external tools: {args.domain}")
+            
+            # Process domain through external tools pipeline
+            results = await tool_manager.process_domain(args.domain)
+            
+            # Add live URLs to the list of URLs to scan
+            if 'live_urls' in results and results['live_urls']:
+                urls = list(results['live_urls'])
+                logger.info(f"Collected {len(urls)} URLs to scan using external tools")
+            else:
+                logger.warning(f"No live URLs found for domain: {args.domain}")
     
     # Setup configuration for intelligent analysis
     if args.intelligent_analysis:
@@ -447,42 +463,85 @@ async def main():
         }
     
     # Setup other configuration options
-    if hasattr(args, 'timeout'):
-        config['timeout'] = args.timeout
-    if hasattr(args, 'concurrency'):
-        config['concurrency'] = args.concurrency
-    if hasattr(args, 'proxy'):
+    config['timeout'] = args.timeout
+    config['concurrency'] = args.concurrency
+    
+    # Setup proxy configuration
+    if args.proxy:
         config['proxy'] = args.proxy
-    if hasattr(args, 'browser') and args.browser:
+        logger.info(f"Using proxy: {args.proxy}")
+    
+    if args.proxy_list:
+        config['proxy_list'] = args.proxy_list
+        logger.info(f"Using proxy list from: {args.proxy_list}")
+    
+    # Setup browser configuration
+    if args.browser:
         config['browser'] = {'enabled': True}
-        # Step 2: Filter URLs (if not skipped)
-        if not args.skip_filtering and collected_urls:
-            filtered_urls = tool_manager.filter_redirect_urls(collected_urls)
-            logger.info(f"Filtered {len(filtered_urls)} potential redirect URLs")
-        else:
-            logger.info("Skipping URL filtering phase")
-            filtered_urls = collected_urls
-        
-        # Step 3: Probe URLs (if not skipped)
-        if not args.skip_probing and filtered_urls:
-            live_urls = await tool_manager.probe_live_urls(filtered_urls)
-            logger.info(f"Found {len(live_urls)} live URLs")
-        else:
-            logger.info("Skipping HTTP probing phase")
-            live_urls = filtered_urls
-        
-        # Save collected URLs to file if specified
-        if args.tools_output and live_urls:
-            with open(args.tools_output, 'w') as f:
-                for url in live_urls:
-                    f.write(f"{url}\n")
-            logger.info(f"Saved {len(live_urls)} URLs to {args.tools_output}")
-        
-        # Use collected URLs for scanning
-        urls = list(live_urls)
-        
-        # If we're using a domain for URL collection, add it to target domains for validation
-        domain_parts = urlparse(args.domain).netloc.split('.')
+        logger.info("Browser-based verification enabled")
+    
+    # Setup detection options
+    if args.enhanced_detection:
+        config['detection'] = {'enhanced': True}
+        logger.info("Enhanced detection enabled")
+    
+    if args.detect_chained:
+        config['detection'] = config.get('detection', {})
+        config['detection']['chained'] = True
+        logger.info("Chained redirect detection enabled")
+    
+    # Setup stealth features
+    if args.stealth or args.traffic_mimicking or args.timing_randomization or args.session_management:
+        config['stealth'] = {
+            'enabled': args.stealth,
+            'traffic_mimicking': args.traffic_mimicking,
+            'timing_randomization': args.timing_randomization,
+            'session_management': args.session_management
+        }
+        logger.info("Stealth features enabled")
+    
+    # Setup advanced analysis
+    if args.advanced_analysis or args.generate_poc or args.business_logic or args.risk_correlation:
+        config['advanced_analysis'] = {
+            'enabled': args.advanced_analysis,
+            'generate_poc': args.generate_poc,
+            'business_logic': args.business_logic,
+            'risk_correlation': args.risk_correlation
+        }
+        logger.info("Advanced analysis features enabled")
+    
+    # Setup user agent rotation
+    if args.random_user_agent:
+        config['user_agent_rotation'] = True
+        logger.info("User-Agent rotation enabled")
+    
+    # Setup distributed scanning
+    if args.distributed:
+        config['distributed'] = {
+            'enabled': True,
+            'coordinator': args.coordinator,
+            'worker': args.worker,
+            'worker_name': args.worker_name
+        }
+        logger.info("Distributed scanning enabled")
+    
+    # Setup custom payloads
+    if args.custom_payloads:
+        config['custom_payload_file'] = args.custom_payloads
+        logger.info(f"Using custom payloads from: {args.custom_payloads}")
+    
+    # Setup target domains for validation
+    if args.target_domains:
+        config['target_domains'] = args.target_domains.split(',')
+        logger.info(f"Target domains for validation: {args.target_domains}")
+    
+    # If we're using a domain for URL collection, add it to target domains for validation
+    if args.domain and not args.use_external_tools:
+        from urllib.parse import urlparse
+        domain = args.domain
+        if '://' not in domain:
+            domain = f"http://{domain}"
+        domain_parts = urlparse(domain).netloc.split('.')
         if len(domain_parts) >= 2:
             base_domain = '.'.join(domain_parts[-2:])
             payload_manager.add_target_domain(base_domain)
