@@ -27,7 +27,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import OpenX modules
 from core.scanner import Scanner
-from core.detection.enhanced_detection import EnhancedDetection
+from core.detection.enhanced_detection import EnhancedDetector
 from utils.crawler import Crawler
 from utils.reporter import Reporter
 from utils.external_tools import ExternalToolManager
