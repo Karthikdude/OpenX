@@ -41,6 +41,7 @@ from utils.resume_manager import ResumeManager
 from config.config import Config
 from utils.helpers import read_urls_from_file, save_results_to_file
 from fake_useragent_data import UserAgentManager
+from payloads.payload_manager import PayloadManager
 
 # Banner function
 def print_banner():
@@ -417,6 +418,9 @@ async def main():
         except Exception as e:
             logger.error(f"Error loading configuration file: {e}")
             return 1
+            
+    # Initialize payload manager
+    payload_manager = PayloadManager(config)
     
     # Setup configuration for external tools
     if args.use_external_tools:
