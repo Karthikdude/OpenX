@@ -6,6 +6,7 @@ Handles the main scanning functionality
 import asyncio
 import logging
 import random
+import re
 import time
 import urllib.parse
 from typing import List, Dict, Set, Tuple, Optional, Any
