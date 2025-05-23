@@ -10,7 +10,7 @@ import urllib.parse
 import random
 import time
 import json
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Set
 from pathlib import Path
 
 def is_valid_url(url: str) -> bool:
