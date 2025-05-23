@@ -422,6 +422,9 @@ async def main():
     # Initialize payload manager
     payload_manager = PayloadManager(config)
     
+    # Initialize URLs list
+    urls = []
+    
     # Setup configuration for external tools
     if args.use_external_tools:
         config['external_tools'] = {
