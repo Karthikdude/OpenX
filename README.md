@@ -239,7 +239,7 @@ openx -d example.com --use-external-tools --browser
 You can use a configuration file to set default options:
 
 ```bash
-python opex.py --config config.json
+ opex --config config.json
 ```
 
 Example configuration file (config.json):
@@ -340,7 +340,7 @@ URLs are categorized into four risk levels based on their total score:
 ### Testing a Specific Parameter
 
 ```bash
-python opex.py -u "https://example.com/redirect?url=FUZZ"
+ opex -u "https://example.com/redirect?url=FUZZ"
 ```
 
 The `FUZZ` keyword will be replaced with various payloads during testing.
@@ -542,7 +542,7 @@ SOFTWARE.
 
 ## Changelog
 
-### Version 3.0 (July 2025)
+### Version 3.0 (May 2025)
 - Added distributed scanning architecture with coordinator and worker nodes
 - Implemented stealth features for evasion (traffic mimicking, timing randomization)
 - Added advanced analysis module with impact assessment and attack vector generation
@@ -576,7 +576,6 @@ SOFTWARE.
 
 - Developed by Karthik S Sathyan
 - Inspired by various open redirect testing techniques
-- Thanks to all contributors
 - Special thanks to the developers of the integrated tools:
   - waybackurls, gau, urlfinder (URL collection)
   - gf (URL filtering)
