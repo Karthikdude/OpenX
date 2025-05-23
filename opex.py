@@ -42,6 +42,7 @@ from config.config import Config
 from utils.helpers import read_urls_from_file, save_results_to_file
 from fake_useragent_data import UserAgentManager
 from payloads.payload_manager import PayloadManager
+from utils.reporter import Reporter
 
 # Banner function
 def print_banner():
@@ -422,6 +423,9 @@ async def main():
     # Initialize payload manager
     payload_manager = PayloadManager(config)
     
+    # Initialize reporter
+    reporter = Reporter(config)
+    
     # Initialize URLs list
     urls = []
     
@@ -517,7 +521,7 @@ async def main():
     stats['scan_duration'] = duration
     
     # Print results
-    print_results(results, stats, args.hide_vuln)
+    reporter.print_results(results, stats, args.hide_vuln)
     
     # Generate report if output file is specified
     if args.output:

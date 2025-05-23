@@ -269,6 +269,11 @@ class Scanner:
                             # Get domain from original URL
                             domain = urllib.parse.urlparse(target).netloc
                             
+                            # Skip 404 responses
+                            if response.status == 404:
+                                print(Fore.YELLOW + f"[SKIPPED] {domain} [404] -> {payload_url} (Not a valid endpoint)")
+                                break
+                                
                             # Check if response indicates vulnerability
                             is_vuln, severity, details = self.payload_manager.is_vulnerable(
                                 final_url, response_body
