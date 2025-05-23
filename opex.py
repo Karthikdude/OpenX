@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
 OpenX - Open Redirect Vulnerability Scanner
-Version 2.0
+Version 3.0
 
 A powerful and modular tool for detecting open redirect vulnerabilities
-with support for multiple scanning methods and external tool integration.
+with support for distributed scanning, stealth features, advanced analysis,
+and interactive modes.
 """
 
 import os
@@ -21,10 +22,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import OpenX modules
 from core.scanner import Scanner
+from core.detection.enhanced_detection import EnhancedDetection
 from utils.crawler import Crawler
 from utils.reporter import Reporter
 from utils.external_tools import ExternalToolManager
 from utils.intelligent_analyzer import IntelligentAnalyzer
+from utils.analysis.advanced_analysis import AdvancedAnalysis
+from utils.evasion.stealth_features import StealthFeatures
+from utils.evasion.waf_bypass import WAFBypass
+from utils.distributed.coordinator import Coordinator
+from utils.resume_manager import ResumeManager
 from config.config import Config
 from utils.helpers import read_urls_from_file, save_results_to_file
 from fake_useragent_data import UserAgentManager
@@ -40,7 +47,7 @@ def print_banner():
 ╚██████╔╝██║     ███████╗██║ ╚████║██╔╝ ██╗
  ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═══╝╚═╝  ╚═╝
 
-OpenX - Open Redirect Scanner
+OpenX v3.0 - Advanced Open Redirect Scanner
 Developed by Karthik S Sathyan
 """
     print(banner)
@@ -67,6 +74,8 @@ def parse_arguments():
     target_group.add_argument("-u", "--url", help="Single URL to scan")
     target_group.add_argument("-l", "--url-file", help="File containing URLs to scan")
     target_group.add_argument("-d", "--domain", help="Target domain for passive URL collection")
+    target_group.add_argument("--resume", help="Resume a previous scan using session ID")
+    target_group.add_argument("--list-sessions", action="store_true", help="List available resume sessions")
     
     # Output options
     output_group = parser.add_argument_group("Output")
@@ -83,13 +92,43 @@ def parse_arguments():
     scan_group.add_argument("--dry-run", action="store_true", help="Test without scanning")
     scan_group.add_argument("--browser", action="store_true", help="Use headless browser for deep verification")
     scan_group.add_argument("--concurrency", type=int, default=100, help="Number of concurrent requests")
+    scan_group.add_argument("--enhanced-detection", action="store_true", help="Enable enhanced detection capabilities")
+    scan_group.add_argument("--detect-chained", action="store_true", help="Enable detection of chained redirects")
     
     # Proxy options
     proxy_group = parser.add_argument_group("Proxy")
     proxy_group.add_argument("-p", "--proxy", help="HTTP proxy URL")
+    proxy_group.add_argument("--proxy-list", help="File containing proxy URLs for rotation")
     
     # User agent options
     ua_group = parser.add_argument_group("User Agent")
+    
+    # Distributed scanning options
+    distributed_group = parser.add_argument_group("Distributed Scanning")
+    distributed_group.add_argument("--distributed", action="store_true", help="Enable distributed scanning")
+    distributed_group.add_argument("--coordinator", help="Coordinator URL for distributed scanning")
+    distributed_group.add_argument("--worker", action="store_true", help="Run as a worker node")
+    distributed_group.add_argument("--worker-name", help="Worker node name")
+    
+    # Stealth options
+    stealth_group = parser.add_argument_group("Stealth Features")
+    stealth_group.add_argument("--stealth", action="store_true", help="Enable stealth features")
+    stealth_group.add_argument("--traffic-mimicking", action="store_true", help="Enable traffic mimicking")
+    stealth_group.add_argument("--timing-randomization", action="store_true", help="Enable timing randomization")
+    stealth_group.add_argument("--session-management", action="store_true", help="Enable session management")
+    
+    # Advanced analysis options
+    analysis_group = parser.add_argument_group("Advanced Analysis")
+    analysis_group.add_argument("--advanced-analysis", action="store_true", help="Enable advanced analysis")
+    analysis_group.add_argument("--generate-poc", action="store_true", help="Generate proof of concept for vulnerabilities")
+    analysis_group.add_argument("--business-logic", action="store_true", help="Perform business logic analysis")
+    analysis_group.add_argument("--risk-correlation", action="store_true", help="Identify related vulnerabilities")
+    
+    # Interactive mode options
+    interactive_group = parser.add_argument_group("Interactive Mode")
+    interactive_group.add_argument("--interactive-cli", action="store_true", help="Start interactive CLI mode")
+    interactive_group.add_argument("--web-dashboard", action="store_true", help="Start web dashboard")
+    interactive_group.add_argument("--dashboard-port", type=int, default=8000, help="Web dashboard port")
     ua_group.add_argument("-ua", "--random-user-agent", action="store_true", help="Randomize User-Agent")
     
     # Configuration options

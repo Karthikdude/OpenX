@@ -1,12 +1,12 @@
-# OpenX v2.0 - Advanced Open Redirect Vulnerability Scanner
+# OpenX v3.0 - Advanced Open Redirect Vulnerability Scanner
 
 [![Python 3.6+](https://img.shields.io/badge/python-3.6+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-2.0-orange.svg)](https://github.com/username/openx/releases/tag/v2.0)
+[![Version](https://img.shields.io/badge/version-3.0-orange.svg)](https://github.com/username/openx/releases/tag/v3.0)
 
 OpenX is a powerful, modular, and feature-rich open redirect vulnerability scanner designed for security professionals and penetration testers. It helps identify and verify open redirect vulnerabilities in web applications with advanced detection techniques and comprehensive reporting.
 
-Version 2.0 introduces major enhancements including external tools integration, improved browser-based detection, and a more comprehensive scanning pipeline.
+Version 3.0 introduces major enhancements including distributed scanning architecture, stealth features, advanced analysis capabilities, and interactive modes. Version 2.0 introduced external tools integration, improved browser-based detection, and a more comprehensive scanning pipeline.
 
 ## Features
 
@@ -75,6 +75,38 @@ Version 2.0 introduces major enhancements including external tools integration, 
 - **Intelligent Analysis**
   - Uses rule-based scoring heuristics to prioritize high-risk URLs
   - Assigns scores based on various factors like common redirect parameters, URL in parameter value, protocol-relative URLs, etc.
+
+### New in Version 3.0
+
+- **Stealth Features Module**
+  - Traffic mimicking to simulate normal user behavior
+  - Request timing randomization based on human patterns
+  - Session management with realistic user flows
+  - Distributed request sourcing through proxy rotation
+
+- **Advanced Analysis Module**
+  - Impact assessment scoring based on page context
+  - Attack vector generation (PoCs) in multiple formats (HTML, curl, JavaScript, Python)
+  - Business logic analysis for redirect chains
+  - Related vulnerability identification and risk correlation
+
+- **Distributed Scanning Architecture**
+  - Master/worker architecture for distributed scanning
+  - Task queuing, load balancing, and result aggregation
+  - Fault tolerance and worker monitoring
+  - REST API for management and status reporting
+
+- **Interactive Modes**
+  - Command-line interactive interface for real-time testing
+  - Web-based dashboard for scan management
+  - Real-time scan monitoring and result visualization
+  - Configuration management through UI
+
+- **Enhanced Detection Capabilities**
+  - Detection of various redirect types (meta refresh, iframe redirects, history.pushState)
+  - WebSocket and POST-based redirect detection
+  - Chained redirect detection (A→B→C scenarios)
+  - WAF bypass techniques for evasion
 
 ## Installation
 
@@ -341,6 +373,49 @@ python opex.py -d example.com --use-external-tools -o report.html
 python examples/passive_recon_scan.py -d example.com -o report.html --browser
 ```
 
+### Distributed Scanning (v3.0)
+
+```bash
+# Start the coordinator
+python utils/distributed/coordinator.py --host 0.0.0.0 --port 8080
+
+# Start worker nodes
+python utils/distributed/worker.py --coordinator http://coordinator-ip:8080
+
+# Distribute a scan using the coordinator
+python opex.py -l urls.txt --distributed --coordinator http://coordinator-ip:8080
+```
+
+### Using Stealth Mode (v3.0)
+
+```bash
+# Enable stealth mode with traffic mimicking
+python opex.py -l urls.txt --stealth --traffic-mimicking
+
+# Use timing randomization to avoid detection
+python opex.py -l urls.txt --stealth --timing-randomization
+```
+
+### Advanced Analysis (v3.0)
+
+```bash
+# Generate impact assessment and attack vectors
+python opex.py -l urls.txt --advanced-analysis --generate-poc
+
+# Perform business logic analysis
+python opex.py -l urls.txt --advanced-analysis --business-logic
+```
+
+### Interactive Mode (v3.0)
+
+```bash
+# Start the interactive CLI
+python utils/interactive/cli_interactive.py
+
+# Start the web dashboard
+python utils/interactive/web_dashboard.py --port 8000
+```
+
 ### Crawling and Scanning (v2.0)
 
 ```bash
@@ -373,9 +448,24 @@ OpenX/
 ├── reports/               # Report generation
 │   └── report_generator.py # Report templates
 ├── utils/                 # Utility functions
+│   ├── analysis/          # Analysis modules
+│   │   └── advanced_analysis.py # Impact assessment and attack vectors
 │   ├── crawler.py         # Web crawler
+│   ├── distributed/       # Distributed scanning
+│   │   ├── coordinator.py # Master node implementation
+│   │   └── worker.py      # Worker node implementation
+│   ├── evasion/           # Evasion techniques
+│   │   ├── stealth_features.py # Stealth scanning features
+│   │   └── waf_bypass.py  # WAF bypass techniques
 │   ├── external_tools.py  # External tools integration
 │   ├── helpers.py         # Helper functions
+│   ├── interactive/       # Interactive interfaces
+│   │   ├── cli_interactive.py # Command-line interface
+│   │   └── web_dashboard.py # Web-based dashboard
+│   ├── integrations/      # Third-party integrations
+│   │   ├── burp_extension.py # Burp Suite extension
+│   │   └── zap_plugin.py  # OWASP ZAP plugin
+│   ├── resume_manager.py  # Scan resumption functionality
 │   └── fake_useragent_data.py # User agent management
 ├── fake_useragent_data.py # User agent database
 ├── opex.py                # Main script
@@ -398,6 +488,18 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Changelog
+
+### Version 3.0 (July 2025)
+- Added distributed scanning architecture with coordinator and worker nodes
+- Implemented stealth features for evasion (traffic mimicking, timing randomization)
+- Added advanced analysis module with impact assessment and attack vector generation
+- Implemented interactive CLI and web dashboard interfaces
+- Enhanced detection capabilities for various redirect types
+- Added resume functionality for interrupted scans
+- Implemented WAF bypass techniques for improved evasion
+- Added integration with Burp Suite and OWASP ZAP
+- Implemented business logic analysis for redirect chains
+- Added related vulnerability identification and risk correlation
 
 ### Version 2.0 (May 2025)
 - Added external tools integration for passive URL collection
