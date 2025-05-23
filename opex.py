@@ -34,7 +34,7 @@ from utils.external_tools import ExternalToolManager
 from utils.intelligent_analyzer import IntelligentAnalyzer
 from utils.analysis.advanced_analysis import AdvancedAnalysis
 from utils.evasion.stealth_features import StealthFeatures
-from utils.evasion.waf_bypass import WAFBypass
+from utils.evasion.waf_bypass import WafBypass
 from utils.distributed.coordinator import Coordinator
 from utils.resume_manager import ResumeManager
 from config.config import Config

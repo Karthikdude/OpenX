@@ -51,7 +51,7 @@ def read_urls_from_file(filename: str) -> List[str]:
     
     return list(set(urls))  # Remove duplicates
 
-def save_results(results: List[Dict[str, Any]], output_file: str) -> bool:
+def save_results_to_file(results: List[Dict[str, Any]], output_file: str) -> bool:
     """
     Save results to a file
     
