@@ -39,7 +39,7 @@ from utils.evasion.waf_bypass import WafBypass
 from utils.distributed.coordinator import Coordinator
 from utils.resume_manager import ResumeManager
 from config.config import Config
-from utils.helpers import read_urls_from_file, save_results_to_file
+from utils.helpers import read_urls_from_file, save_results_to_file, normalize_url, analyze_url_for_vulnerabilities
 from fake_useragent_data import UserAgentManager
 from payloads.payload_manager import PayloadManager
 from utils.reporter import Reporter
@@ -489,9 +489,30 @@ async def main():
     else:
         # Traditional URL collection from arguments
         if args.url:
-            urls.append(args.url)
+            # Single URL - create a URL object with analysis
+            url_obj = {
+                'url': args.url,
+                'normalized_url': normalize_url(args.url),
+                'analysis': analyze_url_for_vulnerabilities(args.url)
+            }
+            urls = [url_obj]
         elif args.url_file:
-            urls = read_urls_from_file(args.url_file)
+            # Enhanced URL handling from file
+            url_objects = read_urls_from_file(args.url_file, analyze=True, normalize=True)
+            
+            # Log analysis results
+            high_risk_count = sum(1 for u in url_objects if u.get('analysis', {}).get('risk_level') == 'high')
+            medium_risk_count = sum(1 for u in url_objects if u.get('analysis', {}).get('risk_level') == 'medium')
+            redirect_param_count = sum(1 for u in url_objects if u.get('analysis', {}).get('has_redirect_params'))
+            
+            logger.info(f"URL Analysis: {len(url_objects)} unique URLs, {high_risk_count} high risk, {medium_risk_count} medium risk")
+            logger.info(f"Found {redirect_param_count} URLs with potential redirect parameters")
+            
+            if high_risk_count > 0:
+                logger.info("High-risk URLs will be tested first")
+                
+            # Store the URL objects
+            urls = url_objects
     
     # Check if we have URLs to scan
     if not urls:
@@ -504,14 +525,41 @@ async def main():
     
     # Dry run
     if args.dry_run:
-        logger.info(f"Dry run: would scan {len(urls)} URLs")
-        sys.exit(0)
+        print("\nDry run - URLs to scan:")
+        for url_obj in urls:
+            url = url_obj['url'] if isinstance(url_obj, dict) else url_obj
+            risk_level = url_obj.get('analysis', {}).get('risk_level', 'unknown') if isinstance(url_obj, dict) else 'unknown'
+            risk_score = url_obj.get('analysis', {}).get('risk_score', 0) if isinstance(url_obj, dict) else 0
+            redirect_params = url_obj.get('analysis', {}).get('redirect_params', []) if isinstance(url_obj, dict) else []
+            
+            risk_color = ''
+            if risk_level == 'high':
+                risk_color = Fore.RED
+            elif risk_level == 'medium':
+                risk_color = Fore.YELLOW
+            else:
+                risk_color = Fore.GREEN
+                
+            print(f"  - {url} {risk_color}[Risk: {risk_level}, Score: {risk_score}]{Style.RESET_ALL}")
+            if redirect_params:
+                print(f"    Redirect parameters: {', '.join(redirect_params)}")
+        print(f"\nTotal: {len(urls)} URLs")
+        return 0
     
     # Run scan
     logger.info(f"Starting scan with {len(urls)} URLs")
     start_time = datetime.now()
     
-    results = await scanner.scan_urls(urls)
+    # Extract actual URLs from URL objects if needed
+    scan_urls = []
+    for url_obj in urls:
+        if isinstance(url_obj, dict):
+            scan_urls.append(url_obj['url'])
+        else:
+            scan_urls.append(url_obj)
+    
+    # Scan URLs
+    results = await scanner.scan_urls(scan_urls)
     
     end_time = datetime.now()
     duration = (end_time - start_time).total_seconds()

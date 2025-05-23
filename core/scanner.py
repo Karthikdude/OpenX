@@ -306,25 +306,68 @@ class Scanner:
                                 print(Fore.GREEN + f"[REDIRECT] {domain} [{response.status}] -> {payload_url}")
                             
                             # Check for JS-based redirects
-                            if not is_vuln and "window.location" in response_body or "document.location" in response_body:
-                                print(Fore.YELLOW + f"[JS REDIRECT] {target} may be vulnerable!")
+                            if not is_vuln and ("window.location" in response_body or "document.location" in response_body or 
+                                             "location.href" in response_body or "location.replace" in response_body):
+                                # Extract the redirect URL if possible
+                                js_redirect_url = None
+                                js_redirect_patterns = [
+                                    r"window\.location\s*=\s*['\"]([^'\"]+)['\"]|window\.location\.href\s*=\s*['\"]([^'\"]+)['\"]|window\.location\.replace\s*\(['\"]([^'\"]+)['\"]\)|window\.location\.assign\s*\(['\"]([^'\"]+)['\"]\)",
+                                    r"document\.location\s*=\s*['\"]([^'\"]+)['\"]|document\.location\.href\s*=\s*['\"]([^'\"]+)['\"]|document\.location\.replace\s*\(['\"]([^'\"]+)['\"]\)|document\.location\.assign\s*\(['\"]([^'\"]+)['\"]\)",
+                                    r"location\.href\s*=\s*['\"]([^'\"]+)['\"]|location\.replace\s*\(['\"]([^'\"]+)['\"]\)|location\.assign\s*\(['\"]([^'\"]+)['\"]\)"
+                                ]
                                 
-                                # Add as potential vulnerability with low severity
+                                for pattern in js_redirect_patterns:
+                                    matches = re.findall(pattern, response_body)
+                                    if matches:
+                                        # Extract the first non-empty group from the match
+                                        for match in matches:
+                                            if isinstance(match, tuple):
+                                                for group in match:
+                                                    if group:
+                                                        js_redirect_url = group
+                                                        break
+                                            else:
+                                                js_redirect_url = match
+                                            if js_redirect_url:
+                                                break
+                                    if js_redirect_url:
+                                        break
+                                
+                                # Determine severity based on redirect URL
+                                severity = "medium"  # Default for JS redirects
+                                details = "JavaScript-based redirect detected"
+                                
+                                if js_redirect_url:
+                                    details = f"JavaScript-based redirect to {js_redirect_url} detected"
+                                    # Check if redirect URL contains any target domains
+                                    for domain in self.payload_manager.target_domains:
+                                        if domain in js_redirect_url:
+                                            severity = "high"
+                                            details = f"JavaScript-based redirect to target domain: {domain}"
+                                            break
+                                
+                                print(Fore.RED + f"[VULNERABLE] {domain} [{response.status}] -> {payload_url} (Severity: {severity}, JS Redirect)")
+                                
+                                # Mark as an actual vulnerability
                                 result = {
                                     "url": target,
                                     "payload_url": payload_url,
                                     "status_code": response.status,
-                                    "final_url": final_url,
-                                    "severity": "low",
-                                    "details": "Potential JavaScript-based redirect detected",
+                                    "final_url": js_redirect_url or final_url,
+                                    "severity": severity,
+                                    "details": details,
                                     "type": "js_redirect",
-                                    "payload": payload
+                                    "payload": payload,
+                                    "vulnerable": True
                                 }
                                 
                                 result_key = f"{target}:{payload}:js"
                                 if result_key not in self.result_set:
                                     self.results.append(result)
                                     self.result_set.add(result_key)
+                                    self.vulnerable_count += 1
+                                    
+                                vulnerable = True
                         
                         # Successfully tested, break retry loop
                         break

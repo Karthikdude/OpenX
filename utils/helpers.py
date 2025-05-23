@@ -29,27 +29,241 @@ def is_valid_url(url: str) -> bool:
     except Exception:
         return False
 
-def read_urls_from_file(filename: str) -> List[str]:
+def normalize_url(url: str) -> str:
     """
-    Read URLs from a file
+    Normalize a URL by handling common issues
+    
+    Args:
+        url (str): URL to normalize
+        
+    Returns:
+        str: Normalized URL
+    """
+    # Add scheme if missing
+    if not url.startswith(('http://', 'https://')):
+        url = 'https://' + url
+    
+    # Parse the URL
+    parsed = urllib.parse.urlparse(url)
+    
+    # Normalize the path
+    path = parsed.path or '/'
+    
+    # Rebuild the URL
+    normalized = urllib.parse.urlunparse((
+        parsed.scheme,
+        parsed.netloc,
+        path,
+        parsed.params,
+        parsed.query,
+        parsed.fragment
+    ))
+    
+    return normalized
+
+def detect_redirect_params(url: str) -> List[str]:
+    """
+    Detect potential redirection parameters in a URL
+    
+    Args:
+        url (str): URL to analyze
+        
+    Returns:
+        List[str]: List of potential redirection parameters
+    """
+    # Common redirect parameter names
+    redirect_params = [
+        'redirect', 'url', 'next', 'target', 'redir', 'destination',
+        'dest', 'return', 'return_url', 'return_to', 'goto', 'link',
+        'to', 'out', 'view', 'dir', 'path', 'uri', 'location', 'forward',
+        'forward_url', 'go', 'site', 'page', 'file', 'val', 'validate', 'domain',
+        'callback', 'return_path', 'returnTo', 'continue', 'continue_to',
+        'redirect_to', 'redirectUrl', 'redirect_uri', 'redirectUri', 'u', 'r'
+    ]
+    
+    redirect_found = []
+    parsed = urllib.parse.urlparse(url)
+    query_params = urllib.parse.parse_qs(parsed.query)
+    
+    for param in query_params:
+        if param.lower() in redirect_params:
+            redirect_found.append(param)
+    
+    return redirect_found
+
+def analyze_url_for_vulnerabilities(url: str) -> Dict[str, Any]:
+    """
+    Analyze a URL for potential vulnerability indicators
+    
+    Args:
+        url (str): URL to analyze
+        
+    Returns:
+        Dict[str, Any]: Analysis results
+    """
+    analysis = {
+        'has_redirect_params': False,
+        'redirect_params': [],
+        'has_open_redirects': False,
+        'risk_score': 0,
+        'notes': []
+    }
+    
+    # Check for redirect parameters
+    redirect_params = detect_redirect_params(url)
+    if redirect_params:
+        analysis['has_redirect_params'] = True
+        analysis['redirect_params'] = redirect_params
+        analysis['risk_score'] += 5
+        analysis['notes'].append(f"Found potential redirect parameters: {', '.join(redirect_params)}")
+    
+    # Check for URLs in query parameters (potential open redirects)
+    parsed = urllib.parse.urlparse(url)
+    query_params = urllib.parse.parse_qs(parsed.query)
+    
+    for param, values in query_params.items():
+        for value in values:
+            if value.startswith(('http://', 'https://', '//', 'www.')):
+                analysis['has_open_redirects'] = True
+                analysis['risk_score'] += 8
+                analysis['notes'].append(f"Parameter '{param}' contains a URL: {value}")
+    
+    # Check for suspicious path segments
+    path_segments = parsed.path.split('/')
+    for segment in path_segments:
+        if segment.lower() in ['redirect', 'redir', 'go', 'out', 'goto', 'return']:
+            analysis['risk_score'] += 3
+            analysis['notes'].append(f"Suspicious path segment: {segment}")
+    
+    # Categorize risk
+    if analysis['risk_score'] >= 10:
+        analysis['risk_level'] = 'high'
+    elif analysis['risk_score'] >= 5:
+        analysis['risk_level'] = 'medium'
+    else:
+        analysis['risk_level'] = 'low'
+    
+    return analysis
+
+def read_urls_from_file(filename: str, analyze: bool = True, normalize: bool = True) -> List[Dict[str, Any]]:
+    """
+    Read URLs from a file with enhanced handling
     
     Args:
         filename (str): Path to file containing URLs
+        analyze (bool): Whether to analyze URLs for vulnerabilities
+        normalize (bool): Whether to normalize URLs
         
     Returns:
-        List[str]: List of valid URLs
+        List[Dict[str, Any]]: List of URL objects with metadata
     """
-    urls = []
-    try:
-        with open(filename, 'r') as file:
-            for line in file:
-                url = line.strip()
-                if url and is_valid_url(url):
-                    urls.append(url)
-    except Exception as e:
-        logging.error(f"Error reading URLs from file {filename}: {e}")
+    url_objects = []
+    seen_urls = set()  # For duplicate detection
+    seen_normalized = set()  # For normalized duplicate detection
+    logger = logging.getLogger('openx.helpers')
     
-    return list(set(urls))  # Remove duplicates
+    try:
+        # Determine file type from extension
+        file_ext = Path(filename).suffix.lower()
+        
+        if file_ext == '.json':
+            # Handle JSON file
+            with open(filename, 'r') as file:
+                data = json.load(file)
+                # Handle different JSON formats
+                if isinstance(data, list):
+                    # List of strings or objects
+                    for item in data:
+                        if isinstance(item, str):
+                            url = item.strip()
+                        elif isinstance(item, dict) and 'url' in item:
+                            url = item['url'].strip()
+                        else:
+                            continue
+                        
+                        if url and is_valid_url(url):
+                            _process_url(url, url_objects, seen_urls, seen_normalized, analyze, normalize)
+                elif isinstance(data, dict):
+                    # Dictionary with URLs as values or in nested structure
+                    for key, value in data.items():
+                        if isinstance(value, str) and is_valid_url(value):
+                            _process_url(value, url_objects, seen_urls, seen_normalized, analyze, normalize)
+        elif file_ext == '.csv':
+            # Handle CSV file
+            import csv
+            with open(filename, 'r') as file:
+                reader = csv.reader(file)
+                for row in reader:
+                    for item in row:
+                        url = item.strip()
+                        if url and is_valid_url(url):
+                            _process_url(url, url_objects, seen_urls, seen_normalized, analyze, normalize)
+        else:
+            # Handle text file (default)
+            with open(filename, 'r') as file:
+                for line in file:
+                    url = line.strip()
+                    # Skip comments and empty lines
+                    if not url or url.startswith('#'):
+                        continue
+                    
+                    if is_valid_url(url):
+                        _process_url(url, url_objects, seen_urls, seen_normalized, analyze, normalize)
+        
+        logger.info(f"Loaded {len(url_objects)} unique URLs from {filename}")
+        
+        # Sort URLs by risk score if analyzed
+        if analyze:
+            url_objects.sort(key=lambda x: x.get('analysis', {}).get('risk_score', 0), reverse=True)
+            
+            # Log high-risk URLs
+            high_risk_urls = [u for u in url_objects if u.get('analysis', {}).get('risk_level') == 'high']
+            if high_risk_urls:
+                logger.info(f"Found {len(high_risk_urls)} high-risk URLs")
+                
+    except Exception as e:
+        logger.error(f"Error reading URLs from file {filename}: {e}")
+    
+    return url_objects
+
+def _process_url(url: str, url_objects: List[Dict[str, Any]], seen_urls: Set[str], 
+                seen_normalized: Set[str], analyze: bool, normalize: bool) -> None:
+    """
+    Process a URL and add it to the URL objects list if it's unique
+    
+    Args:
+        url (str): URL to process
+        url_objects (List[Dict[str, Any]]): List to add the URL object to
+        seen_urls (Set[str]): Set of seen URLs
+        seen_normalized (Set[str]): Set of seen normalized URLs
+        analyze (bool): Whether to analyze the URL
+        normalize (bool): Whether to normalize the URL
+    """
+    # Skip if we've seen this exact URL
+    if url in seen_urls:
+        return
+    
+    # Create URL object
+    url_object = {'url': url}
+    
+    # Normalize if requested
+    if normalize:
+        normalized_url = normalize_url(url)
+        url_object['normalized_url'] = normalized_url
+        
+        # Skip if we've seen this normalized URL
+        if normalized_url in seen_normalized:
+            return
+        
+        seen_normalized.add(normalized_url)
+    
+    # Analyze if requested
+    if analyze:
+        url_object['analysis'] = analyze_url_for_vulnerabilities(url)
+    
+    # Add to our collections
+    url_objects.append(url_object)
+    seen_urls.add(url)
 
 def save_results_to_file(results: List[Dict[str, Any]], output_file: str) -> bool:
     """
