@@ -16,6 +16,11 @@ import asyncio
 import yaml
 from typing import List, Dict, Any, Set, Optional
 from datetime import datetime
+import traceback
+from colorama import init, Fore, Style
+
+# Initialize colorama
+init(autoreset=True)
 
 # Add the parent directory to sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -83,6 +88,7 @@ def parse_arguments():
     output_group.add_argument("--report-format", choices=["text", "json", "html"], default="text", help="Report format")
     output_group.add_argument("-error", "--hide-error", action="store_true", help="Hide errors from output")
     output_group.add_argument("-hide", "--hide-vuln", action="store_true", help="Only display vulnerable URLs")
+    output_group.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
     output_group.add_argument("-debug", "--debug-mode", action="store_true", help="Enable debug mode")
     
     # Scan options
@@ -134,6 +140,8 @@ def parse_arguments():
     # Configuration options
     config_group = parser.add_argument_group("Configuration")
     config_group.add_argument("--config", help="Path to configuration file")
+    config_group.add_argument("--save-config", help="Save current configuration to file")
+    config_group.add_argument("--check-config", action="store_true", help="Check configuration and environment")
     
     # Payload options
     payload_group = parser.add_argument_group("Payload")
@@ -254,19 +262,147 @@ async def prioritize_urls_with_intelligent_analysis(urls_to_scan, args, config):
     
     return prioritized_urls
 
+def check_config():
+    """Check configuration and environment for issues"""
+    import shutil
+    import platform
+    import psutil
+    from colorama import Fore, Style
+    
+    print(f"{Fore.CYAN}\n=== OpenX Configuration Check ==={Style.RESET_ALL}")
+    
+    # System information
+    print(f"\n{Fore.CYAN}System Information:{Style.RESET_ALL}")
+    print(f"OS: {platform.system()} {platform.release()}")
+    print(f"Python: {platform.python_version()}")
+    print(f"CPU: {psutil.cpu_count(logical=True)} cores")
+    memory = psutil.virtual_memory()
+    print(f"Memory: {memory.total / (1024 * 1024 * 1024):.2f} GB total, {memory.available / (1024 * 1024 * 1024):.2f} GB available")
+    
+    # Check for required dependencies
+    print(f"\n{Fore.CYAN}Required Dependencies:{Style.RESET_ALL}")
+    required_modules = ['aiohttp', 'colorama', 'pyyaml', 'jinja2', 'rich', 'beautifulsoup4', 'tqdm', 'psutil']
+    for module in required_modules:
+        try:
+            __import__(module)
+            print(f"{Fore.GREEN}✓ {module}{Style.RESET_ALL}")
+        except ImportError:
+            print(f"{Fore.RED}✗ {module} (missing){Style.RESET_ALL}")
+    
+    # Check for optional dependencies
+    print(f"\n{Fore.CYAN}Optional Dependencies:{Style.RESET_ALL}")
+    optional_modules = {
+        'playwright': 'Browser automation (enhanced detection)',
+        'selenium': 'Browser automation (alternative)',
+        'webdriver_manager': 'WebDriver management for Selenium',
+        'sklearn': 'Machine learning capabilities'
+    }
+    for module, description in optional_modules.items():
+        try:
+            __import__(module)
+            print(f"{Fore.GREEN}✓ {module} - {description}{Style.RESET_ALL}")
+        except ImportError:
+            print(f"{Fore.YELLOW}○ {module} - {description} (not installed){Style.RESET_ALL}")
+    
+    # Check for external tools
+    print(f"\n{Fore.CYAN}External Tools:{Style.RESET_ALL}")
+    external_tools = [
+        ('waybackurls', 'URL collection'),
+        ('gau', 'URL collection'),
+        ('urlfinder', 'URL collection'),
+        ('gf', 'URL filtering'),
+        ('httpx', 'HTTP probing'),
+        ('httprobe', 'HTTP probing')
+    ]
+    for tool, description in external_tools:
+        if shutil.which(tool):
+            print(f"{Fore.GREEN}✓ {tool} - {description}{Style.RESET_ALL}")
+        else:
+            print(f"{Fore.YELLOW}○ {tool} - {description} (not found in PATH){Style.RESET_ALL}")
+    
+    # Check for configuration directories
+    print(f"\n{Fore.CYAN}Configuration Directories:{Style.RESET_ALL}")
+    config_dirs = [
+        ('config', 'Configuration files'),
+        ('payloads', 'Payload files'),
+        ('reports', 'Report templates'),
+        ('utils', 'Utility modules')
+    ]
+    for directory, description in config_dirs:
+        if os.path.isdir(directory):
+            print(f"{Fore.GREEN}✓ {directory} - {description}{Style.RESET_ALL}")
+        else:
+            print(f"{Fore.RED}✗ {directory} - {description} (missing){Style.RESET_ALL}")
+    
+    # Check for network connectivity
+    print(f"\n{Fore.CYAN}Network Connectivity:{Style.RESET_ALL}")
+    try:
+        import socket
+        socket.create_connection(("www.google.com", 80), timeout=5)
+        print(f"{Fore.GREEN}✓ Internet connection available{Style.RESET_ALL}")
+    except (socket.timeout, socket.error):
+        print(f"{Fore.RED}✗ Internet connection unavailable{Style.RESET_ALL}")
+    
+    # Summary
+    print(f"\n{Fore.CYAN}Summary:{Style.RESET_ALL}")
+    print(f"OpenX is ready to use. Run with -v or --debug for detailed logging.")
+    print(f"For help, run: openx --help")
+    print(f"{Fore.CYAN}==================================={Style.RESET_ALL}\n")
+
+def setup_logging(args):
+    """Set up logging based on command line arguments"""
+    # Create logger
+    logger = logging.getLogger('openx')
+    
+    # Set log level based on arguments
+    if args.debug_mode:
+        log_level = logging.DEBUG
+    elif args.verbose:
+        log_level = logging.INFO
+    else:
+        log_level = logging.WARNING
+    
+    logger.setLevel(log_level)
+    
+    # Create console handler with appropriate formatting
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(log_level)
+    
+    # Create formatter
+    if args.debug_mode:
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(funcName)s() - %(message)s')
+    elif args.verbose:
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    else:
+        formatter = logging.Formatter('%(levelname)s: %(message)s')
+    
+    console_handler.setFormatter(formatter)
+    
+    # Add handler to logger if not already added
+    if not logger.handlers:
+        logger.addHandler(console_handler)
+    
+    return logger
+
 async def main():
-    """
-    Main function
-    """
+    """Main function"""
+    # Set up signal handler for keyboard interrupt
+    signal.signal(signal.SIGINT, signal_handler)
+    
     # Parse command line arguments
     args = parse_arguments()
     
+    # Check configuration if requested
+    if args.check_config:
+        check_config()
+        return
+    
     # Set up logging
-    logging.basicConfig(
-        level=logging.DEBUG if args.debug_mode else logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-    logger = logging.getLogger('openx')
+    logger = setup_logging(args)
+    
+    # Log startup information
+    logger.info(f"OpenX v3.0 starting at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.debug(f"Command line arguments: {args}")
     
     # Display banner
     print_banner()
@@ -348,6 +484,7 @@ async def main():
     # Check if we have URLs to scan
     if not urls:
         logger.error("No targets to scan. Use -u/--url, -l/--url-file, or -d/--domain with --use-external-tools")
+        logger.debug("Exiting due to no targets")
         sys.exit(1)
     
     # Initialize scanner
@@ -470,7 +607,15 @@ def main_cli():
         print(Fore.RED + "\nProgram terminated by user")
     except Exception as e:
         print(Fore.RED + f"\nAn error occurred: {e}")
-        logging.error(f"Unhandled exception: {e}", exc_info=True)
+        logger = logging.getLogger('openx')
+        logger.error(f"Unhandled exception: {e}")
+        
+        # Print traceback in debug mode
+        if logger.level <= logging.DEBUG:
+            print(Fore.RED + "\nTraceback:")
+            traceback.print_exc()
+        else:
+            print(Fore.YELLOW + "\nRun with --debug for detailed error information")
 
 # Entry point when run directly
 if __name__ == "__main__":

@@ -179,13 +179,19 @@ openx -l urls.txt -o results.txt
 
 ```bash
 # Enable smart parameter-based payload injection
-python opex.py -l urls.txt -s
+openx -l urls.txt -s
 
 # Use headless browser for deep verification
-python opex.py -l urls.txt --browser
+openx -l urls.txt --browser
 
 # Hide errors from output
-python opex.py -l urls.txt -error
+openx -l urls.txt -error
+
+# Enable verbose output for detailed logging
+openx -l urls.txt -v
+
+# Enable debug mode for full debugging information
+openx -l urls.txt --debug
 
 # Only display vulnerable URLs
 python opex.py -l urls.txt -hide
@@ -225,7 +231,7 @@ openx -d example.com --use-external-tools --skip-probing
 openx -d example.com --use-external-tools --tools-output urls.txt
 
 # Use collected URLs with browser verification
-python opex.py -d example.com --use-external-tools --browser
+openx -d example.com --use-external-tools --browser
 ```
 
 ### Configuration File
@@ -269,8 +275,9 @@ Example configuration file (config.json):
 | `-o`, `--output` | Output file to save results |
 | `-error`, `--hide-error` | Hide errors from output |
 | `-hide`, `--hide-vuln` | Only display vulnerable URLs |
+| `-v`, `--verbose` | Enable verbose output with detailed logging |
+| `-debug`, `--debug-mode` | Enable debug mode with full debugging information |
 | `-s`, `--smart-scan` | Enable smart parameter-based payload injection |
-| `-debug`, `--debug-mode` | Enable debug mode |
 | `-t`, `--timeout` | Request timeout in seconds (default: 10) |
 | `--dry-run` | Test without scanning |
 | `--browser` | Use headless browser for deep verification |
@@ -430,6 +437,28 @@ openx-crawler -u https://example.com -d 2 -o report.html
 openx-waf-bypass -u https://example.com/redirect?url= -o report.html --proxy http://127.0.0.1:8080
 ```
 
+### Debugging and Troubleshooting
+
+```bash
+# Enable verbose output for detailed logging
+openx -l urls.txt -v
+
+# Enable debug mode for full debugging information
+openx -l urls.txt --debug
+
+# Check for common configuration issues
+openx --check-config
+
+# Test connectivity to targets without scanning
+openx -l urls.txt --dry-run -v
+```
+
+Debugging levels:
+
+1. **Normal mode**: Shows only essential information and results
+2. **Verbose mode** (`-v`): Shows detailed progress, connection information, and scan results
+3. **Debug mode** (`--debug`): Shows complete debugging information including traceback for errors
+
 ## Project Structure
 
 ```
@@ -485,7 +514,31 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+```
+MIT License
+
+Copyright (c) 2025 Karthik S Sathyan
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ## Changelog
 
