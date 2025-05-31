@@ -15,6 +15,7 @@ from colorama import Fore, Style
 
 from .payloads import PayloadManager
 from .utils import normalize_url, extract_redirect_params, validate_redirect
+from .analyzer import URLAnalyzer
 from config.user_agents import get_random_user_agent
 
 class OpenRedirectScanner:
@@ -24,6 +25,7 @@ class OpenRedirectScanner:
         self.config = config
         self.session = requests.Session()
         self.payload_manager = PayloadManager(config.get('custom_payloads'))
+        self.analyzer = URLAnalyzer()
         self.total_requests = 0
         self.results_lock = threading.Lock()
         

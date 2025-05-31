@@ -52,6 +52,8 @@ Examples:
     parser.add_argument('--status-codes', action='store_true', help='Display HTTP status codes in output')
     parser.add_argument('--verbose', action='store_true', help='Enable detailed verbose logging')
     parser.add_argument('--silent', action='store_true', help='Suppress banner and non-essential output')
+    parser.add_argument('-f', '--fast', action='store_true',
+                        help='Fast mode: stop testing URL after first vulnerability found')
     
     return parser.parse_args()
 
