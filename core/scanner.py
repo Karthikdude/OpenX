@@ -260,7 +260,11 @@ class OpenRedirectScanner:
             
             # Test common form redirect parameters
             form_params = ['redirect_to', 'next', 'return', 'success_url', 'failure_url']
-            test_payloads = ['http://evil.com', '//evil.com', 'javascript:alert(1)']
+            # In fast mode, use fewer payloads
+            if self.config.get('fast'):
+                test_payloads = ['http://evil.com', '//evil.com']
+            else:
+                test_payloads = ['http://evil.com', '//evil.com', 'javascript:alert(1)']
             
             for param in form_params:
                 for payload in test_payloads:
@@ -317,7 +321,11 @@ class OpenRedirectScanner:
         try:
             # Test common cookie redirect patterns
             cookie_names = ['redirect_url', 'return_to', 'next_page', 'success_url', 'callback_url']
-            test_payloads = ['http://evil.com', '//evil.com', 'javascript:alert(1)']
+            # In fast mode, use fewer payloads
+            if self.config.get('fast'):
+                test_payloads = ['http://evil.com', '//evil.com']
+            else:
+                test_payloads = ['http://evil.com', '//evil.com', 'javascript:alert(1)']
             
             for cookie_name in cookie_names:
                 for payload in test_payloads:
@@ -507,31 +515,41 @@ class OpenRedirectScanner:
         # Get payloads for testing
         payloads = self.payload_manager.get_payloads()
         
-        # In fast mode, limit to most effective payloads
+        # In fast mode, limit payloads per parameter but test all likely parameters
         if self.config.get('fast'):
-            payloads = payloads[:5]  # Only test first 5 most effective payloads
-            redirect_params = redirect_params[:3]  # Only test first 3 most common parameters
+            payloads = payloads[:3]  # Only test first 3 most effective payloads per parameter
         
         # Test URL parameters
         for param in redirect_params:
+            param_vulnerable = False
             for payload in payloads:
                 result = self.test_url_parameter(url, param, payload)
                 if result:
                     results.append(result)
                     if result['vulnerable']:
+                        param_vulnerable = True
                         if self.config.get('verbose'):
                             print(f"{Fore.RED}[VULNERABLE] {url} - Parameter: {param}, Payload: {payload}{Style.RESET_ALL}")
-                        # In fast mode, stop testing after first vulnerability found
+                        # In fast mode, stop testing this parameter after first vulnerability found
                         if self.config.get('fast'):
                             if self.config.get('verbose'):
-                                print(f"{Fore.YELLOW}[FAST MODE] Stopping scan after first vulnerability found{Style.RESET_ALL}")
-                            return results
+                                print(f"{Fore.YELLOW}[FAST MODE] Found vulnerability on parameter '{param}', moving to next parameter{Style.RESET_ALL}")
+                            break  # Move to next parameter
             
-            # In fast mode, if no vulnerability found with this parameter, try next parameter
-            # but if we find ANY vulnerability, stop immediately
+            # Continue to test other parameters even if this one was vulnerable
         
-        # Skip additional testing methods in fast mode if no vulnerability found yet
+        # In fast mode, still test form and cookie redirects but with limited scope
         if self.config.get('fast'):
+            # Test form-based redirects with limited payloads
+            form_results = self.test_form_redirects(url)
+            if form_results:
+                results.extend(form_results)
+            
+            # Test cookie-based redirects with limited payloads
+            cookie_results = self.test_cookie_redirects(url)
+            if cookie_results:
+                results.extend(cookie_results)
+            
             return results
         
         # Test header injection if enabled (only if not in fast mode)
