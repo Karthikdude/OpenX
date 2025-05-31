@@ -507,6 +507,11 @@ class OpenRedirectScanner:
         # Get payloads for testing
         payloads = self.payload_manager.get_payloads()
         
+        # In fast mode, limit to most effective payloads
+        if self.config.get('fast'):
+            payloads = payloads[:5]  # Only test first 5 most effective payloads
+            redirect_params = redirect_params[:3]  # Only test first 3 most common parameters
+        
         # Test URL parameters
         for param in redirect_params:
             for payload in payloads:
@@ -522,7 +527,11 @@ class OpenRedirectScanner:
                                 print(f"{Fore.YELLOW}[FAST MODE] Stopping scan after first vulnerability found{Style.RESET_ALL}")
                             return results
         
-        # Test header injection if enabled (only if no vulnerability found in fast mode)
+        # Skip additional testing methods in fast mode if no vulnerability found yet
+        if self.config.get('fast'):
+            return results
+        
+        # Test header injection if enabled (only if not in fast mode)
         if self.config.get('headers_test'):
             header_payloads = self.payload_manager.get_header_payloads()
             header_names = [
@@ -539,35 +548,17 @@ class OpenRedirectScanner:
                         if result['vulnerable']:
                             if self.config.get('verbose'):
                                 print(f"{Fore.RED}[VULNERABLE] {url} - Header: {header_name}, Payload: {payload}{Style.RESET_ALL}")
-                            # In fast mode, stop testing after first vulnerability found
-                            if self.config.get('fast'):
-                                if self.config.get('verbose'):
-                                    print(f"{Fore.YELLOW}[FAST MODE] Stopping scan after first vulnerability found{Style.RESET_ALL}")
-                                return results
+                            return results
         
-        # Test form-based redirects (only if no vulnerability found in fast mode)
+        # Test form-based redirects (only if not in fast mode)
         form_results = self.test_form_redirects(url)
         if form_results:
             results.extend(form_results)
-            # Check if any form results are vulnerable and we're in fast mode
-            if self.config.get('fast'):
-                for result in form_results:
-                    if result.get('vulnerable'):
-                        if self.config.get('verbose'):
-                            print(f"{Fore.YELLOW}[FAST MODE] Stopping scan after first vulnerability found{Style.RESET_ALL}")
-                        return results
         
-        # Test cookie-based redirects (only if no vulnerability found in fast mode)
+        # Test cookie-based redirects (only if not in fast mode)
         cookie_results = self.test_cookie_redirects(url)
         if cookie_results:
             results.extend(cookie_results)
-            # Check if any cookie results are vulnerable and we're in fast mode
-            if self.config.get('fast'):
-                for result in cookie_results:
-                    if result.get('vulnerable'):
-                        if self.config.get('verbose'):
-                            print(f"{Fore.YELLOW}[FAST MODE] Stopping scan after first vulnerability found{Style.RESET_ALL}")
-                        return results
         
         return results
     
