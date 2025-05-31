@@ -106,7 +106,8 @@ def main():
         'callback_url': args.callback,
         'custom_payloads': args.payloads,
         'verbose': args.verbose,
-        'status_codes': args.status_codes
+        'status_codes': args.status_codes,
+        'fast': args.fast
     }
     
     scanner = OpenRedirectScanner(scanner_config)

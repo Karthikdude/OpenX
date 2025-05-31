@@ -526,6 +526,9 @@ class OpenRedirectScanner:
                             if self.config.get('verbose'):
                                 print(f"{Fore.YELLOW}[FAST MODE] Stopping scan after first vulnerability found{Style.RESET_ALL}")
                             return results
+            
+            # In fast mode, if no vulnerability found with this parameter, try next parameter
+            # but if we find ANY vulnerability, stop immediately
         
         # Skip additional testing methods in fast mode if no vulnerability found yet
         if self.config.get('fast'):
@@ -584,7 +587,7 @@ class OpenRedirectScanner:
                             vulnerable_results = [r for r in results if r.get('vulnerable', False)]
                             if vulnerable_results:
                                 if self.config.get('verbose'):
-                                    print(f"{Fore.YELLOW}[FAST MODE] Vulnerability found, stopping scan{Style.RESET_ALL}")
+                                    print(f"{Fore.YELLOW}[FAST MODE] Found {len(vulnerable_results)} vulnerability(ies), stopping scan{Style.RESET_ALL}")
                                 pbar.update(1)
                                 break
                     except Exception as e:
