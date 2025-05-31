@@ -23,6 +23,10 @@ args = "openx_test"
 task = "workflow.run"
 args = "Vulnerable App"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Advanced Labs"
+
 [[workflows.workflow]]
 name = "OpenX Scanner"
 author = "agent"
@@ -48,9 +52,22 @@ task = "shell.exec"
 args = "python vulnerable_app.py"
 waitForPort = 5000
 
+[[workflows.workflow]]
+name = "Advanced Labs"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python advanced_labs.py"
+waitForPort = 5001
+
 [deployment]
 run = ["sh", "-c", "pip install requests colorama tqdm && python openx.py --help"]
 
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 5001
+externalPort = 3000

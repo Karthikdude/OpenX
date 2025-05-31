@@ -8,6 +8,7 @@ import threading
 import time
 import random
 import urllib.parse
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from colorama import Fore, Style
@@ -165,7 +166,12 @@ class OpenRedirectScanner:
                     r'document\.location\s*=\s*["\']([^"\']+)["\']',
                     r'location\.replace\(["\']([^"\']+)["\']\)',
                     r'window\.location\s*=\s*"([^"]+)"',
-                    r'location\.href\s*=\s*["\']([^"\']+)["\']'
+                    r'location\.href\s*=\s*["\']([^"\']+)["\']',
+                    r'location\.assign\(["\']([^"\']+)["\']\)',
+                    r'window\.open\(["\']([^"\']+)["\']',
+                    r'document\.location\.href\s*=\s*["\']([^"\']+)["\']',
+                    r'top\.location\s*=\s*["\']([^"\']+)["\']',
+                    r'parent\.location\s*=\s*["\']([^"\']+)["\']'
                 ]
                 
                 for pattern in js_patterns:
@@ -235,6 +241,121 @@ class OpenRedirectScanner:
                 print(f"{Fore.YELLOW}[WARNING] Error testing header {header_name} on {url}: {str(e)}{Style.RESET_ALL}")
             return None
     
+    def test_form_redirects(self, url):
+        """Test form-based redirect vulnerabilities"""
+        results = []
+        
+        try:
+            # First check if there are forms on the page
+            response = self.make_request(url)
+            if not response or response.status_code != 200:
+                return results
+            
+            content = response.text.lower()
+            if '<form' not in content:
+                return results
+            
+            # Test common form redirect parameters
+            form_params = ['redirect_to', 'next', 'return', 'success_url', 'failure_url']
+            test_payloads = ['http://evil.com', '//evil.com', 'javascript:alert(1)']
+            
+            for param in form_params:
+                for payload in test_payloads:
+                    form_data = {param: payload}
+                    
+                    # Test POST request
+                    try:
+                        post_response = self.session.post(
+                            url, 
+                            data=form_data, 
+                            allow_redirects=False, 
+                            timeout=self.timeout
+                        )
+                        
+                        with self.results_lock:
+                            self.total_requests += 1
+                        
+                        if post_response.status_code in [301, 302, 303, 307, 308]:
+                            location = post_response.headers.get('Location', '')
+                            if validate_redirect(payload, location, self.config.get('callback_url')):
+                                results.append({
+                                    'vulnerable': True,
+                                    'url': url,
+                                    'parameter': param,
+                                    'payload': payload,
+                                    'method': 'Form POST Redirect',
+                                    'status_code': post_response.status_code,
+                                    'redirect_location': location,
+                                    'severity': self._determine_severity(payload, location)
+                                })
+                                
+                                if self.config.get('verbose'):
+                                    print(f"{Fore.RED}[VULNERABLE] {url} - Form Parameter: {param}, Payload: {payload}{Style.RESET_ALL}")
+                    
+                    except Exception as e:
+                        if self.config.get('verbose'):
+                            print(f"{Fore.YELLOW}[WARNING] Form test error for {url}: {str(e)}{Style.RESET_ALL}")
+                        continue
+        
+        except Exception as e:
+            if self.config.get('verbose'):
+                print(f"{Fore.YELLOW}[WARNING] Form redirect test failed for {url}: {str(e)}{Style.RESET_ALL}")
+        
+        return results
+    
+    def test_cookie_redirects(self, url):
+        """Test cookie-based redirect vulnerabilities"""
+        results = []
+        
+        try:
+            # Test common cookie redirect patterns
+            cookie_names = ['redirect_url', 'return_to', 'next_page', 'success_url', 'callback_url']
+            test_payloads = ['http://evil.com', '//evil.com', 'javascript:alert(1)']
+            
+            for cookie_name in cookie_names:
+                for payload in test_payloads:
+                    # Set cookie and make request
+                    cookies = {cookie_name: payload}
+                    
+                    try:
+                        response = self.session.get(
+                            url, 
+                            cookies=cookies, 
+                            allow_redirects=False, 
+                            timeout=self.timeout
+                        )
+                        
+                        with self.results_lock:
+                            self.total_requests += 1
+                        
+                        if response.status_code in [301, 302, 303, 307, 308]:
+                            location = response.headers.get('Location', '')
+                            if validate_redirect(payload, location, self.config.get('callback_url')):
+                                results.append({
+                                    'vulnerable': True,
+                                    'url': url,
+                                    'cookie': cookie_name,
+                                    'payload': payload,
+                                    'method': 'Cookie-based Redirect',
+                                    'status_code': response.status_code,
+                                    'redirect_location': location,
+                                    'severity': self._determine_severity(payload, location)
+                                })
+                                
+                                if self.config.get('verbose'):
+                                    print(f"{Fore.RED}[VULNERABLE] {url} - Cookie: {cookie_name}, Payload: {payload}{Style.RESET_ALL}")
+                    
+                    except Exception as e:
+                        if self.config.get('verbose'):
+                            print(f"{Fore.YELLOW}[WARNING] Cookie test error for {url}: {str(e)}{Style.RESET_ALL}")
+                        continue
+        
+        except Exception as e:
+            if self.config.get('verbose'):
+                print(f"{Fore.YELLOW}[WARNING] Cookie redirect test failed for {url}: {str(e)}{Style.RESET_ALL}")
+        
+        return results
+    
     def _determine_severity(self, payload, redirect_location):
         """Determine vulnerability severity based on payload and redirect location"""
         if any(domain in redirect_location.lower() for domain in ['evil.com', 'attacker.com', 'malicious.com']):
@@ -256,7 +377,14 @@ class OpenRedirectScanner:
         
         # If no parameters found, try common ones
         if not redirect_params:
-            redirect_params = ['url', 'redirect', 'return', 'callback', 'next', 'target', 'goto', 'link', 'destination', 'forward', 'continue']
+            redirect_params = [
+                'url', 'redirect', 'return', 'callback', 'next', 'target', 'goto', 'link', 
+                'destination', 'forward', 'continue', 'redirect_url', 'redirect_uri', 
+                'returnUrl', 'returnURL', 'return_url', 'backUrl', 'back_url', 'successUrl', 
+                'success_url', 'failureUrl', 'failure_url', 'redirectTo', 'redirect_to',
+                'site', 'domain', 'host', 'location', 'path', 'page', 'ref', 'referer',
+                'source', 'from', 'origin', 'redir', 'exit', 'out', 'away', 'external'
+            ]
         
         # Get payloads for testing
         payloads = self.payload_manager.get_payloads()
@@ -273,7 +401,11 @@ class OpenRedirectScanner:
         # Test header injection if enabled
         if self.config.get('headers_test'):
             header_payloads = self.payload_manager.get_header_payloads()
-            header_names = ['Host', 'X-Forwarded-Host', 'X-Forwarded-For', 'Referer', 'Origin']
+            header_names = [
+                'Host', 'X-Forwarded-Host', 'X-Forwarded-For', 'X-Real-IP', 
+                'X-Forwarded-Proto', 'X-Forwarded-Server', 'X-Host', 'X-HTTP-Host-Override',
+                'Referer', 'Origin', 'X-Original-URL', 'X-Rewrite-URL', 'CF-Connecting-IP'
+            ]
             
             for header_name in header_names:
                 for payload in header_payloads:
@@ -282,6 +414,16 @@ class OpenRedirectScanner:
                         results.append(result)
                         if result['vulnerable'] and self.config.get('verbose'):
                             print(f"{Fore.RED}[VULNERABLE] {url} - Header: {header_name}, Payload: {payload}{Style.RESET_ALL}")
+        
+        # Test form-based redirects
+        form_results = self.test_form_redirects(url)
+        if form_results:
+            results.extend(form_results)
+        
+        # Test cookie-based redirects
+        cookie_results = self.test_cookie_redirects(url)
+        if cookie_results:
+            results.extend(cookie_results)
         
         return results
     
