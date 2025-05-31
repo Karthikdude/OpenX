@@ -575,27 +575,54 @@ class OpenRedirectScanner:
         """Scan multiple URLs using thread pool"""
         all_results = []
         
-        # Create progress bar
-        with tqdm(total=len(urls), desc="Scanning URLs", 
-                 bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
-                 disable=self.config.get('verbose', False)) as pbar:
+        # In fast mode, scan URLs sequentially and stop after first vulnerability
+        if self.config.get('fast'):
+            if self.config.get('verbose'):
+                print(f"{Fore.YELLOW}[FAST MODE] Scanning URLs sequentially until first vulnerability found{Style.RESET_ALL}")
             
-            # Use ThreadPoolExecutor for concurrent scanning
-            with ThreadPoolExecutor(max_workers=self.config.get('threads', 10)) as executor:
-                # Submit all URLs for scanning
-                future_to_url = {executor.submit(self.scan_single_url, url): url for url in urls}
+            with tqdm(total=len(urls), desc="Scanning URLs (Fast Mode)", 
+                     bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
+                     disable=self.config.get('verbose', False)) as pbar:
                 
-                # Process completed scans
-                for future in as_completed(future_to_url):
-                    url = future_to_url[future]
+                for url in urls:
                     try:
-                        results = future.result()
+                        results = self.scan_single_url(url)
                         if results:
                             all_results.extend(results)
+                            # Check if any vulnerability was found
+                            vulnerable_results = [r for r in results if r.get('vulnerable', False)]
+                            if vulnerable_results:
+                                if self.config.get('verbose'):
+                                    print(f"{Fore.YELLOW}[FAST MODE] Vulnerability found, stopping scan{Style.RESET_ALL}")
+                                pbar.update(1)
+                                break
                     except Exception as e:
                         if self.config.get('verbose'):
                             print(f"{Fore.RED}[ERROR] Failed to scan {url}: {str(e)}{Style.RESET_ALL}")
                     finally:
                         pbar.update(1)
+        else:
+            # Regular mode: scan all URLs concurrently
+            with tqdm(total=len(urls), desc="Scanning URLs", 
+                     bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
+                     disable=self.config.get('verbose', False)) as pbar:
+                
+                # Use ThreadPoolExecutor for concurrent scanning
+                with ThreadPoolExecutor(max_workers=self.config.get('threads', 10)) as executor:
+                    # Submit all URLs for scanning
+                    future_to_url = {executor.submit(self.scan_single_url, url): url for url in urls}
+                    
+                    # Process completed scans
+                    for future in as_completed(future_to_url):
+                        url = future_to_url[future]
+                        try:
+                            results = future.result()
+                            if results:
+                                all_results.extend(results)
+                        except Exception as e:
+                            if self.config.get('verbose'):
+                                print(f"{Fore.RED}[ERROR] Failed to scan {url}: {str(e)}{Style.RESET_ALL}")
+                        finally:
+                            pbar.update(1)
         
         return all_results
