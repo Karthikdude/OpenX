@@ -359,6 +359,113 @@ class OpenRedirectScanner:
         
         return results
     
+    def _test_url_parameters_smart(self, url, smart_payloads, url_analysis):
+        """Test URL parameters with intelligent payload selection"""
+        results = []
+        
+        # Extract parameters from URL
+        params = extract_redirect_params(url)
+        
+        # Prioritize parameters based on analysis
+        priority_params = [p['name'] for p in url_analysis['priority_parameters']]
+        
+        # Test high-priority parameters first
+        for param in priority_params:
+            if param in params:
+                for payload in smart_payloads:
+                    result = self.test_url_parameter(url, param, payload)
+                    if result and result.get('vulnerable'):
+                        results.append(result)
+                        if self.config.get('fast'):
+                            return results
+        
+        # Test remaining parameters if not in fast mode or no vulnerabilities found
+        if not self.config.get('fast') or not results:
+            remaining_params = [p for p in params if p not in priority_params]
+            for param in remaining_params:
+                for payload in smart_payloads:
+                    result = self.test_url_parameter(url, param, payload)
+                    if result and result.get('vulnerable'):
+                        results.append(result)
+                        if self.config.get('fast'):
+                            return results
+        
+        return results
+    
+    def _test_header_injection_smart(self, url, smart_payloads):
+        """Test header injection with intelligent payload selection"""
+        results = []
+        
+        # Priority headers for testing
+        priority_headers = [
+            'Host', 'X-Forwarded-Host', 'X-Real-IP', 'X-HTTP-Host-Override'
+        ]
+        
+        # Test with reduced payload set for headers
+        header_payloads = smart_payloads[:10]  # Limit to most effective payloads
+        
+        for header_name in priority_headers:
+            for payload in header_payloads:
+                result = self.test_header_injection(url, header_name, payload)
+                if result and result.get('vulnerable'):
+                    results.append(result)
+                    if self.config.get('fast'):
+                        return results
+        
+        return results
+    
+    def _enhanced_vulnerability_verification(self, url, payload, response):
+        """Enhanced vulnerability verification with multiple checks"""
+        if not response:
+            return False
+        
+        # Check status code
+        if response.status_code not in [301, 302, 303, 307, 308]:
+            return False
+        
+        # Get redirect location
+        location = response.headers.get('Location', '')
+        if not location:
+            return False
+        
+        # Enhanced validation
+        if validate_redirect(payload, location, self.config.get('callback_url')):
+            # Additional verification - check if it's a real external redirect
+            if self._is_external_redirect(url, location):
+                return True
+            
+            # Check for protocol-relative URLs
+            if location.startswith('//') and 'evil.com' in location:
+                return True
+            
+            # Check for JavaScript/data URI schemes
+            if location.startswith(('javascript:', 'data:')):
+                return True
+        
+        return False
+    
+    def _is_external_redirect(self, original_url, redirect_location):
+        """Check if redirect is to an external domain"""
+        try:
+            from urllib.parse import urlparse
+            
+            original_domain = urlparse(original_url).netloc
+            redirect_domain = urlparse(redirect_location).netloc
+            
+            # Consider it external if domains are different
+            if redirect_domain and redirect_domain != original_domain:
+                return True
+            
+            # Check for suspicious domains
+            suspicious_domains = ['evil.com', 'attacker.com', 'malicious.com']
+            if any(domain in redirect_location.lower() for domain in suspicious_domains):
+                return True
+                
+        except Exception:
+            pass
+        
+        return False
+    
     def _determine_severity(self, payload, redirect_location):
         """Determine vulnerability severity based on payload and redirect location"""
         if any(domain in redirect_location.lower() for domain in ['evil.com', 'attacker.com', 'malicious.com']):

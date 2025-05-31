@@ -226,7 +226,7 @@ class URLAnalyzer:
         analysis = self.analyze_url(url)
         payloads = analysis['suggested_payloads']
         
-        if max_payloads and len(payloads) > max_payloads:
+        if max_payloads is not None and len(payloads) > max_payloads:
             # Keep the most effective payloads
             payloads = payloads[:max_payloads]
         
