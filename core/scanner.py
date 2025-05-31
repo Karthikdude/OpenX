@@ -163,7 +163,9 @@ class OpenRedirectScanner:
                     r'window\.location\s*=\s*["\']([^"\']+)["\']',
                     r'window\.location\.href\s*=\s*["\']([^"\']+)["\']',
                     r'document\.location\s*=\s*["\']([^"\']+)["\']',
-                    r'location\.replace\(["\']([^"\']+)["\']\)'
+                    r'location\.replace\(["\']([^"\']+)["\']\)',
+                    r'window\.location\s*=\s*"([^"]+)"',
+                    r'location\.href\s*=\s*["\']([^"\']+)["\']'
                 ]
                 
                 for pattern in js_patterns:
@@ -254,7 +256,7 @@ class OpenRedirectScanner:
         
         # If no parameters found, try common ones
         if not redirect_params:
-            redirect_params = ['url', 'redirect', 'return', 'callback', 'next', 'target', 'goto', 'link']
+            redirect_params = ['url', 'redirect', 'return', 'callback', 'next', 'target', 'goto', 'link', 'destination', 'forward', 'continue']
         
         # Get payloads for testing
         payloads = self.payload_manager.get_payloads()
