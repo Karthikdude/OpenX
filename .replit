@@ -1,0 +1,39 @@
+modules = ["python-3.11"]
+
+[nix]
+channel = "stable-24_05"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "OpenX Scanner"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "openx_test"
+
+[[workflows.workflow]]
+name = "OpenX Scanner"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pip install requests colorama tqdm && python openx.py --help"
+
+[[workflows.workflow]]
+name = "openx_test"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pip install requests colorama tqdm && python openx.py --help"
+
+[deployment]
+run = ["sh", "-c", "pip install requests colorama tqdm && python openx.py --help"]
