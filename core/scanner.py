@@ -174,6 +174,7 @@ class OpenRedirectScanner:
                     r'parent\.location\s*=\s*["\']([^"\']+)["\']'
                 ]
                 
+                import re
                 for pattern in js_patterns:
                     matches = re.findall(pattern, content, re.IGNORECASE)
                     for match in matches:
