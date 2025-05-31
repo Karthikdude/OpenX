@@ -44,6 +44,91 @@ The tool offers comprehensive scanning capabilities with multi-threading support
 pip install -r requirements.txt
 ```
 
+## 🌐 Global Installation
+
+You can make OpenX globally accessible from your terminal by following these steps:
+
+### For Windows
+
+1. **Create a batch file** named `openx.bat` in a directory that's in your PATH (e.g., `C:\Windows` or create a custom directory and add it to PATH)
+
+   ```batch
+   @echo off
+   python "%~dp0openx.py" %*
+   ```
+
+2. **Alternative: Using pip to install locally**
+
+   Create a `setup.py` file in the project root:
+
+   ```python
+   from setuptools import setup, find_packages
+
+   setup(
+       name="openx",
+       version="1.0",
+       packages=find_packages(),
+       entry_points={
+           'console_scripts': [
+               'openx=openx:main',
+           ],
+       },
+       install_requires=[
+           'colorama',
+           'requests',
+           'tqdm',
+           'urllib3',
+           'python-dateutil',
+       ],
+   )
+   ```
+
+   Then install it:
+
+   ```bash
+   pip install -e .
+   ```
+
+### For Linux/macOS
+
+1. **Create a symbolic link**
+
+   ```bash
+   # Make the script executable
+   chmod +x openx.py
+   
+   # Create a symbolic link in /usr/local/bin
+   sudo ln -s "$(pwd)/openx.py" /usr/local/bin/openx
+   ```
+
+2. **Alternative: Using an alias**
+
+   Add this line to your `.bashrc` or `.zshrc`:
+
+   ```bash
+   alias openx='python /path/to/OpenXScanner/openx.py'
+   ```
+
+   Then reload your shell configuration:
+
+   ```bash
+   source ~/.bashrc  # or source ~/.zshrc
+   ```
+
+3. **Alternative: Using pip to install locally**
+
+   Same as Windows method above.
+
+After installation, you can use OpenX directly from any directory:
+
+```bash
+# Instead of
+python /path/to/openx.py -u https://example.com
+
+# You can now use
+openx -u https://example.com
+```
+
 ## 🚀 Usage
 
 OpenX provides a comprehensive command-line interface with various options:
@@ -85,17 +170,19 @@ options:
 
 ```bash
 # Scan a single URL
-python openx.py -u https://example.com/redirect?url=
+openx -u https://example.com/redirect?url=
 
 # Scan multiple URLs from a file
-python openx.py -l urls.txt -o results.json
+openx -l urls.txt -o results.json
 
 # Advanced scanning with custom options
-python openx.py -u https://example.com --threads 20 --timeout 15
+openx -u https://example.com --threads 20 --timeout 15
 
 # Enable header injection testing with verbose output
-python openx.py -l domains.txt --headers --verbose
+openx -l domains.txt --headers --verbose
 ```
+
+> Note: If you haven't set up global access, use `python openx.py` instead of just `openx`
 
 ## 🧪 Testing with Built-in Labs
 
@@ -134,7 +221,7 @@ OpenX includes several pre-configured URL lists for testing:
 
 ```bash
 # Test against the basic vulnerable app
-python openx.py -l all_labs.txt --verbose
+openx -l all_labs.txt --verbose
 ```
 
 ## 📊 Output Formats
@@ -148,10 +235,10 @@ OpenX supports multiple output formats:
 
 ```bash
 # Example with JSON output
-python openx.py -u https://example.com/redirect?url= -o results.json
+openx -u https://example.com/redirect?url= -o results.json
 
 # Example with CSV output
-python openx.py -l urls.txt -o results.csv
+openx -l urls.txt -o results.csv
 ```
 
 ## 🛡️ Security Considerations
