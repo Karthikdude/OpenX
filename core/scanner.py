@@ -569,10 +569,10 @@ class OpenRedirectScanner:
         """Scan multiple URLs using thread pool"""
         all_results = []
         
-        # In fast mode, scan URLs sequentially and stop after first vulnerability
+        # In fast mode, scan URLs sequentially, stop testing each URL after first vulnerability found
         if self.config.get('fast'):
             if self.config.get('verbose'):
-                print(f"{Fore.YELLOW}[FAST MODE] Scanning URLs sequentially until first vulnerability found{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}[FAST MODE] Scanning each URL until first vulnerability found, then moving to next URL{Style.RESET_ALL}")
             
             with tqdm(total=len(urls), desc="Scanning URLs (Fast Mode)", 
                      bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
@@ -583,13 +583,10 @@ class OpenRedirectScanner:
                         results = self.scan_single_url(url)
                         if results:
                             all_results.extend(results)
-                            # Check if any vulnerability was found
+                            # Check if any vulnerability was found on this URL
                             vulnerable_results = [r for r in results if r.get('vulnerable', False)]
-                            if vulnerable_results:
-                                if self.config.get('verbose'):
-                                    print(f"{Fore.YELLOW}[FAST MODE] Found {len(vulnerable_results)} vulnerability(ies), stopping scan{Style.RESET_ALL}")
-                                pbar.update(1)
-                                break
+                            if vulnerable_results and self.config.get('verbose'):
+                                print(f"{Fore.YELLOW}[FAST MODE] Found {len(vulnerable_results)} vulnerability(ies) on {url}, moving to next URL{Style.RESET_ALL}")
                     except Exception as e:
                         if self.config.get('verbose'):
                             print(f"{Fore.RED}[ERROR] Failed to scan {url}: {str(e)}{Style.RESET_ALL}")
