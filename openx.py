@@ -134,25 +134,92 @@ def main():
             print(f"{Fore.CYAN}[STATS] Total requests: {total_requests}{Style.RESET_ALL}")
             print(f"{Fore.CYAN}[STATS] Vulnerable URLs: {vulnerable_count}/{len(target_urls)}{Style.RESET_ALL}")
         
-        # Display results
+        # Display results with enhanced UI
         if results:
             vulnerable_results = [r for r in results if r['vulnerable']]
             if vulnerable_results:
-                print(f"\n{Fore.RED}{'='*60}")
-                print(f"{Fore.RED}VULNERABLE URLS FOUND:")
-                print(f"{Fore.RED}{'='*60}{Style.RESET_ALL}")
-                
+                # Group results by method for better display
+                results_by_method = {}
                 for result in vulnerable_results:
-                    print(f"\n{Fore.RED}[VULNERABLE] {result['url']}{Style.RESET_ALL}")
-                    print(f"  {Fore.YELLOW}Payload: {result['payload']}{Style.RESET_ALL}")
-                    print(f"  {Fore.YELLOW}Method: {result['method']}{Style.RESET_ALL}")
+                    method = result.get('method', 'Unknown')
+                    if method not in results_by_method:
+                        results_by_method[method] = []
+                    results_by_method[method].append(result)
+                
+                print(f"\n{Fore.RED}{'='*80}")
+                print(f"{Fore.RED}🔍 OPEN REDIRECT VULNERABILITIES DETECTED")
+                print(f"{Fore.RED}{'='*80}{Style.RESET_ALL}")
+                
+                # Summary by method
+                print(f"\n{Fore.CYAN}📊 VULNERABILITY SUMMARY BY TYPE:")
+                for method, method_results in results_by_method.items():
+                    method_icon = {
+                        'URL Parameter': '🌐',
+                        'Meta Refresh': '🔄',
+                        'JavaScript Redirect': '⚡',
+                        'Header Injection': '📋',
+                        'Form POST Redirect': '📝',
+                        'Cookie-based Redirect': '🍪'
+                    }.get(method, '🔍')
+                    
+                    severity_counts = {}
+                    for r in method_results:
+                        sev = r.get('severity', 'Medium')
+                        severity_counts[sev] = severity_counts.get(sev, 0) + 1
+                    
+                    severity_str = ', '.join([f"{sev}: {count}" for sev, count in severity_counts.items()])
+                    print(f"  {method_icon} {Fore.YELLOW}{method}: {len(method_results)} findings ({severity_str}){Style.RESET_ALL}")
+                
+                print(f"\n{Fore.RED}🚨 DETAILED VULNERABILITY FINDINGS:")
+                print(f"{Fore.RED}{'-'*80}{Style.RESET_ALL}")
+                
+                for i, result in enumerate(vulnerable_results, 1):
+                    # Get method icon
+                    method_icon = {
+                        'URL Parameter': '🌐',
+                        'Meta Refresh': '🔄', 
+                        'JavaScript Redirect': '⚡',
+                        'Header Injection': '📋',
+                        'Form POST Redirect': '📝',
+                        'Cookie-based Redirect': '🍪'
+                    }.get(result.get('method', 'Unknown'), '🔍')
+                    
+                    # Get severity color
+                    severity = result.get('severity', 'Medium')
+                    severity_color = {
+                        'High': Fore.RED,
+                        'Medium': Fore.YELLOW, 
+                        'Low': Fore.CYAN
+                    }.get(severity, Fore.WHITE)
+                    
+                    print(f"\n{Fore.RED}[{i:02d}] {method_icon} VULNERABILITY FOUND{Style.RESET_ALL}")
+                    print(f"    {Fore.CYAN}URL: {result['url']}{Style.RESET_ALL}")
+                    print(f"    {Fore.YELLOW}Type: {result.get('method', 'Unknown')}{Style.RESET_ALL}")
+                    print(f"    {Fore.YELLOW}Payload: {result['payload']}{Style.RESET_ALL}")
+                    
+                    # Show parameter or header or cookie
+                    if 'parameter' in result:
+                        print(f"    {Fore.YELLOW}Parameter: {result['parameter']}{Style.RESET_ALL}")
+                    elif 'header' in result:
+                        print(f"    {Fore.YELLOW}Header: {result['header']}{Style.RESET_ALL}")
+                    elif 'cookie' in result:
+                        print(f"    {Fore.YELLOW}Cookie: {result['cookie']}{Style.RESET_ALL}")
+                    
+                    print(f"    {severity_color}Severity: {severity}{Style.RESET_ALL}")
+                    
                     if args.status_codes and 'status_code' in result:
-                        print(f"  {Fore.YELLOW}Status Code: {result['status_code']}{Style.RESET_ALL}")
+                        print(f"    {Fore.YELLOW}Status Code: {result['status_code']}{Style.RESET_ALL}")
+                    
+                    if 'redirect_location' in result:
+                        print(f"    {Fore.YELLOW}Redirects To: {result['redirect_location']}{Style.RESET_ALL}")
+                        
                     if 'redirect_chain' in result and result['redirect_chain']:
-                        print(f"  {Fore.YELLOW}Redirect Chain: {' -> '.join(result['redirect_chain'])}{Style.RESET_ALL}")
-                    print(f"  {Fore.YELLOW}Severity: {result.get('severity', 'Medium')}{Style.RESET_ALL}")
+                        print(f"    {Fore.YELLOW}Redirect Chain: {' -> '.join(result['redirect_chain'])}{Style.RESET_ALL}")
+                
+                print(f"\n{Fore.GREEN}✅ Scan completed successfully - {len(vulnerable_results)} vulnerabilities found{Style.RESET_ALL}")
             else:
-                print(f"\n{Fore.GREEN}[INFO] No open redirect vulnerabilities found{Style.RESET_ALL}")
+                print(f"\n{Fore.GREEN}✅ [SECURE] No open redirect vulnerabilities detected{Style.RESET_ALL}")
+                print(f"{Fore.GREEN}🛡️  The application appears to be properly protected against open redirect attacks{Style.RESET_ALL}")
         
         # Save output if specified
         if args.output:

@@ -4,7 +4,7 @@ Vulnerable Flask Application for Testing OpenX Scanner
 Contains 20+ different open redirect vulnerability patterns
 """
 
-from flask import Flask, request, redirect, render_template_string, make_response, url_for
+from flask import Flask, request, redirect, render_template_string, make_response, url_for, jsonify
 import urllib.parse
 import base64
 import json
@@ -411,8 +411,186 @@ def set_cookie():
     response.set_cookie('redirect_url', redirect_url)
     return response
 
+# Advanced Labs Integration
+@app.route('/oauth/callback')
+def oauth_redirect():
+    """OAuth callback with state parameter redirect vulnerability"""
+    state = request.args.get('state', '')
+    code = request.args.get('code', 'dummy_code')
+    
+    if state:
+        return redirect(state)
+    return "OAuth callback processed"
+
+@app.route('/multi-hop/<int:step>')
+def multi_hop(step):
+    """Multi-hop redirect chain vulnerability"""
+    target = request.args.get('next', '')
+    if step > 1:
+        return redirect(f'/multi-hop/{step-1}?next={target}')
+    elif target:
+        return redirect(target)
+    return "Final destination"
+
+@app.route('/saml/acs', methods=['POST', 'GET'])
+def saml_acs():
+    """SAML ACS RelayState parameter vulnerability"""
+    relay_state = request.args.get('RelayState') or request.form.get('RelayState')
+    saml_response = request.args.get('SAMLResponse') or request.form.get('SAMLResponse')
+    
+    if relay_state:
+        return redirect(relay_state)
+    return "SAML authentication processed"
+
+@app.route('/jwt/redirect')
+def jwt_redirect():
+    """JWT token redirect vulnerability"""
+    token = request.args.get('token', '')
+    try:
+        import base64
+        # Decode JWT payload (simplified)
+        parts = token.split('.')
+        if len(parts) >= 2:
+            payload = base64.b64decode(parts[1] + '==').decode()
+            if 'redirect_uri' in payload:
+                import json
+                data = json.loads(payload)
+                return redirect(data.get('redirect_uri', '/'))
+    except:
+        pass
+    
+    redirect_uri = request.args.get('redirect_uri', '')
+    if redirect_uri:
+        return redirect(redirect_uri)
+    return "JWT processed"
+
+@app.route('/graphql', methods=['POST'])
+def graphql_redirect():
+    """GraphQL mutation redirect vulnerability"""
+    try:
+        data = request.get_json()
+        if data and 'query' in data:
+            query = data['query']
+            if 'redirect' in query.lower():
+                # Extract URL from GraphQL mutation
+                import re
+                url_match = re.search(r'url:\s*"([^"]+)"', query)
+                if url_match:
+                    return redirect(url_match.group(1))
+    except:
+        pass
+    
+    return jsonify({"data": {"redirect": {"success": True}}})
+
+@app.route('/upload/redirect')
+def upload_redirect():
+    """File upload redirect vulnerability"""
+    file_url = request.args.get('file_url', '')
+    success_url = request.args.get('success_url', '')
+    
+    if success_url:
+        return redirect(success_url)
+    return "Upload processed"
+
+@app.route('/api/redirect')
+def api_redirect():
+    """API endpoint redirect vulnerability"""
+    callback = request.args.get('callback', '')
+    redirect_to = request.args.get('redirect_to', '')
+    
+    if redirect_to:
+        return redirect(redirect_to)
+    
+    if callback:
+        return f"{callback}({{\"status\": \"success\", \"redirect\": \"{callback}\"}})"
+    
+    return jsonify({"status": "success"})
+
+@app.route('/cached/redirect')
+def cached_redirect():
+    """Cache-based redirect vulnerability"""
+    cache_key = request.args.get('cache_key', '')
+    redirect_url = request.args.get('url', '')
+    
+    # Simulate cache behavior
+    if cache_key and redirect_url:
+        return redirect(redirect_url)
+    return "Cached response"
+
+@app.route('/unicode/redirect')
+def unicode_redirect():
+    """Unicode normalization redirect vulnerability"""
+    url = request.args.get('url', '')
+    
+    # Various unicode normalizations that could bypass filters
+    if url:
+        import urllib.parse
+        decoded_url = urllib.parse.unquote(url)
+        return redirect(decoded_url)
+    return "Unicode processed"
+
+@app.route('/template/redirect')
+def template_redirect():
+    """Template injection redirect vulnerability"""
+    template = request.args.get('template', '')
+    redirect_url = request.args.get('url', '')
+    
+    if redirect_url and 'redirect' in template.lower():
+        return redirect(redirect_url)
+    return "Template processed"
+
+@app.route('/dns/redirect')
+def dns_redirect():
+    """DNS rebinding redirect vulnerability"""
+    host = request.args.get('host', '')
+    port = request.args.get('port', '80')
+    path = request.args.get('path', '/')
+    
+    if host:
+        target_url = f"http://{host}:{port}{path}"
+        return redirect(target_url)
+    return "DNS lookup processed"
+
+@app.route('/rate-limited/redirect')
+def rate_limited_redirect():
+    """Rate-limited redirect vulnerability"""
+    import time
+    time.sleep(0.1)  # Simulate rate limiting
+    
+    url = request.args.get('url', '')
+    if url:
+        return redirect(url)
+    return "Rate limited response"
+
+@app.route('/advanced')
+def advanced_labs():
+    """Advanced labs directory"""
+    return '''
+    <h1>🔬 Advanced OpenX Labs</h1>
+    <h2>OAuth & Authentication Labs:</h2>
+    <a href="/oauth/callback?state=http://evil.com">OAuth Redirect</a><br>
+    <a href="/jwt/redirect?redirect_uri=http://evil.com">JWT Redirect</a><br>
+    <a href="/saml/acs?RelayState=http://evil.com">SAML RelayState</a><br>
+    
+    <h2>Multi-Step & Chain Labs:</h2>
+    <a href="/multi-hop/3?next=http://evil.com">Multi-hop Redirect</a><br>
+    
+    <h2>API & Modern Labs:</h2>
+    <a href="/graphql">GraphQL Mutation</a><br>
+    <a href="/api/redirect?redirect_to=http://evil.com">API Redirect</a><br>
+    
+    <h2>Advanced Evasion Labs:</h2>
+    <a href="/unicode/redirect?url=http://evil.com">Unicode Redirect</a><br>
+    <a href="/cached/redirect?url=http://evil.com">Cached Redirect</a><br>
+    <a href="/template/redirect?template=redirect&url=http://evil.com">Template Redirect</a><br>
+    <a href="/dns/redirect?host=evil.com">DNS Redirect</a><br>
+    <a href="/upload/redirect?success_url=http://evil.com">Upload Redirect</a><br>
+    <a href="/rate-limited/redirect?url=http://evil.com">Rate Limited Redirect</a><br>
+    '''
+
 if __name__ == '__main__':
-    print("🔐 Starting Vulnerable Test Application")
-    print("Access the lab at: http://localhost:5000")
+    print("🔐 Starting Comprehensive Vulnerable Test Application")
+    print("Access the basic labs at: http://localhost:5000")
+    print("Access the advanced labs at: http://localhost:5000/advanced")
     print("Use this for testing OpenX scanner")
     app.run(host='0.0.0.0', port=5000, debug=True)
