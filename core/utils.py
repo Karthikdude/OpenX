@@ -93,38 +93,72 @@ def validate_redirect(payload, redirect_location, callback_url=None):
         # Normalize the redirect location
         redirect_location = redirect_location.strip()
         
-        # If callback URL is provided, check for it specifically
-        if callback_url:
-            return callback_url.lower() in redirect_location.lower()
+        # If no redirect location, it's not vulnerable
+        if not redirect_location:
+            return False
+            
+        # Extract the payload domain for comparison
+        payload_domain = None
+        if '://' in payload:
+            try:
+                payload_parsed = urllib.parse.urlparse(payload)
+                payload_domain = payload_parsed.netloc.lower()
+            except:
+                pass
         
-        # Check if the redirect location contains our payload
-        if payload.lower() in redirect_location.lower():
+        # Extract the redirect domain for comparison
+        redirect_domain = None
+        if redirect_location.startswith(('http://', 'https://', '//')):
+            try:
+                # Handle protocol-relative URLs
+                if redirect_location.startswith('//'):
+                    redirect_location = 'http:' + redirect_location
+                    
+                redirect_parsed = urllib.parse.urlparse(redirect_location)
+                redirect_domain = redirect_parsed.netloc.lower()
+            except:
+                pass
+        
+        # If callback URL is provided, check for exact domain match
+        if callback_url and redirect_domain:
+            callback_parsed = urllib.parse.urlparse(callback_url)
+            callback_domain = callback_parsed.netloc.lower()
+            return callback_domain == redirect_domain
+        
+        # Check for exact domain match with payload
+        if payload_domain and redirect_domain and payload_domain == redirect_domain:
             return True
-        
-        # Check for common vulnerability indicators
+            
+        # Check for common malicious domains in the actual redirect location
         vulnerability_indicators = [
-            'evil.com', 'attacker.com', 'malicious.com', 'google.com', 'example.com'
+            'evil.com', 'attacker.com', 'malicious.com', 'example.com', 'test.com',
+            'localhost', '127.0.0.1', 'xss.rocks', 'hackme.com', 'attacker-site.com'
         ]
         
-        for indicator in vulnerability_indicators:
-            if indicator in redirect_location.lower():
-                return True
+        # Check for known malicious domains
+        if redirect_domain:
+            for indicator in vulnerability_indicators:
+                if indicator in redirect_domain:
+                    return True
         
-        # Check for external redirects (different domain)
-        if redirect_location.startswith(('http://', 'https://')):
+        # If the payload contains a domain and that exact domain is in the redirect location
+        if payload_domain and redirect_domain and payload_domain in redirect_domain:
             return True
-        
-        # Check for protocol-relative URLs
-        if redirect_location.startswith('//'):
+            
+        # Check if the redirect is to an external domain (any external domain could be vulnerable)
+        # This helps catch redirects to domains not in our vulnerability_indicators list
+        if payload_domain and redirect_domain and redirect_domain != 'localhost' and '127.0.0.1' not in redirect_domain:
+            # If we have a payload domain and it matches the redirect domain, it's likely vulnerable
             return True
-        
-        # Check for JavaScript schemes
+            
+        # JavaScript scheme redirects are vulnerable
         if redirect_location.startswith(('javascript:', 'data:', 'vbscript:')):
             return True
         
         return False
         
-    except Exception:
+    except Exception as e:
+        print(f"Error in validate_redirect: {str(e)}")
         return False
 
 def extract_domain(url):
