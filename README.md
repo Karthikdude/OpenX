@@ -16,13 +16,16 @@ The tool offers comprehensive scanning capabilities with multi-threading support
 
 ## ✨ Features
 
-- 🚀 **High-Performance Scanning**: Multi-threaded architecture for fast scanning
-- 🔄 **Multiple Redirect Detection Methods**: Detects various types of open redirect vulnerabilities
-- 📊 **Detailed Reporting**: Comprehensive vulnerability reports with severity ratings
-- 🛠️ **Customizable**: Configurable threads, timeouts, user agents, and proxies
-- 📝 **Multiple Output Formats**: Export results in JSON, CSV, TXT, or XML
-- 🔍 **Header Injection Testing**: Detect header-based open redirect vulnerabilities
-- 🧪 **Built-in Test Labs**: Includes vulnerable test applications for practice
+- 🚀 **High-Performance Scanning**: Multi-threaded architecture for fast scanning.
+- 🔄 **Multiple Redirect Detection Methods**: Detects URL parameter, meta refresh, JavaScript, header injection, form POST, and cookie-based redirects.
+- 📊 **Detailed Reporting with Severity**: Comprehensive vulnerability reports including severity levels (High, Medium, Low).
+- 🌐 **External URL Gathering**: Fetch URLs from external sources like GAU and Waybackurls for a given domain (`-e`, `--e-gau`, `--e-wayback`).
+- 🎯 **Smart URL Filtering**: Filter large URL lists to focus on those with common redirect parameters (`-s`, `--small`).
+- 📜 **Response Header Display**: Option to display response headers for found vulnerabilities (`-r`, `--response`).
+- ⚡ **Fast Mode**: Stop testing a URL after the first vulnerability is found, now reporting with severity (`-f`, `--fast`).
+- 🛠️ **Customizable**: Configurable threads, timeouts, user agents, proxies, custom payloads, and more.
+- 📝 **Multiple Output Formats**: Export results in JSON, CSV, TXT, or XML.
+- 🧪 **Built-in Test Labs**: Includes vulnerable test applications for practice.
 
 ## 📥 Installation
 
@@ -134,18 +137,18 @@ openx -u https://example.com
 OpenX provides a comprehensive command-line interface with various options:
 
 ```
-usage: openx.py [-h] [-u URL] [-l LIST] [-o OUTPUT] [-c CALLBACK] [--headers]
-                [--payloads PAYLOADS] [--threads THREADS] [--timeout TIMEOUT]
-                [--delay DELAY] [--user-agent USER_AGENT] [--proxy PROXY]
-                [--follow-redirects FOLLOW_REDIRECTS] [--status-codes] [--verbose]
-                [--silent] [-f]
-                                                                                           
+usage: openx.py [-h] (-u URL | -l LIST | -e DOMAIN_OR_FILE)
+                [--e-gau | --e-wayback] [-o OUTPUT] [-c CALLBACK]
+                [--headers] [--payloads PAYLOADS] [--threads THREADS]
+                [--timeout TIMEOUT] [--delay DELAY]
+                [--user-agent USER_AGENT] [--proxy PROXY]
+                [--follow-redirects FOLLOW_REDIRECTS] [--status-codes]
+                [--verbose] [--silent] [-f] [-s] [-r]
+
 OpenX - Advanced Open Redirect Vulnerability Scanner
 
 options:
   -h, --help            show this help message and exit
-  -u URL, --url URL     Single target URL for scanning
-  -l LIST, --list LIST  Path to file containing list of URLs to scan
   -o OUTPUT, --output OUTPUT
                         Output file path with format auto-detection
   -c CALLBACK, --callback CALLBACK
@@ -161,25 +164,44 @@ options:
   --follow-redirects FOLLOW_REDIRECTS
                         Maximum redirect chain depth to follow
   --status-codes        Display HTTP status codes in output
-  --verbose             Enable detailed verbose logging
+  --verbose, -v         Enable detailed verbose logging (includes severity)
   --silent              Suppress banner and non-essential output
-  -f, --fast            Fast mode: stop testing URL after first vulnerability found
+  -f, --fast            Fast mode: stop testing URL after first vulnerability
+                        found
+  -s, --small           Filter URLs to a small set with common redirect
+                        parameters (for -e and -l modes)
+  -r, --response        Display response headers for found vulnerabilities
+
+Target Specification (mutually exclusive, one is required):
+  -u URL, --url URL     Single target URL for scanning
+  -l LIST, --list LIST  Path to file containing list of URLs to scan (one
+                        URL per line)
+  -e DOMAIN_OR_FILE, --external DOMAIN_OR_FILE
+                        Domain or path to file (one domain per line) to
+                        gather URLs from using external tools (gau/waybackurls)
+
+External Tool Options (only with -e):
+  --e-gau               Force use of GAU for URL gathering with -e
+  --e-wayback           Force use of Waybackurls for URL gathering with -e
 ```
 
 ### Examples
 
 ```bash
-# Scan a single URL
-openx -u https://example.com/redirect?url=
+# Scan a single URL and show response headers if vulnerable
+openx -u "https://example.com/redirect?url=http://evil.com" -r --verbose
 
-# Scan multiple URLs from a file
+# Scan multiple URLs from a file, output to JSON
 openx -l urls.txt -o results.json
 
-# Advanced scanning with custom options
-openx -u https://example.com --threads 20 --timeout 15
+# Gather URLs for a domain using external tools (e.g., GAU), apply small filter, run in fast mode
+openx -e example.com --e-gau -s -f --verbose
 
-# Enable header injection testing with verbose output
-openx -l domains.txt --headers --verbose
+# Scan a list of URLs, enable header injection, use 20 threads, 15s timeout
+openx -l urls.txt --headers --threads 20 --timeout 15 --verbose
+
+# Use a callback URL for blind redirect detection
+openx -u "https://vulnerable.site/redir?dest=" -c http://mycallback.com --verbose
 ```
 
 > Note: If you haven't set up global access, use `python openx.py` instead of just `openx`
