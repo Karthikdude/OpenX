@@ -76,7 +76,7 @@ def check_tool_installed(tool_name):
 def run_command_and_get_output(command_parts, verbose=False):
     """Run a shell command and return its stdout lines or None on error."""
     if verbose:
-        print(f"{Fore.CYAN}[INFO] Running command: {' '.join(command_parts)}{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}[INFO] Running command: {' '.join(command_parts)}{Style.RESET_ALL}")
     try:
         process = subprocess.Popen(command_parts, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         stdout, stderr = process.communicate()
@@ -84,7 +84,14 @@ def run_command_and_get_output(command_parts, verbose=False):
             if verbose:
                 print(f"{Fore.RED}[ERROR] Command '{' '.join(command_parts)}' failed with error:\n{stderr.strip()}{Style.RESET_ALL}")
             return None
-        return stdout.strip().splitlines()
+        output_lines = stdout.strip().splitlines()
+        if verbose and output_lines:
+            print(f"{Fore.BLUE}[VERBOSE] Command '{' '.join(command_parts)}' STDOUT (first 5 lines):{Style.RESET_ALL}")
+            for i, line in enumerate(output_lines[:5]):
+                print(f"{Fore.BLUE}[VERBOSE]   {line}{Style.RESET_ALL}")
+            if len(output_lines) > 5:
+                print(f"{Fore.BLUE}[VERBOSE]   ... and {len(output_lines) - 5} more lines.{Style.RESET_ALL}")
+        return output_lines
     except FileNotFoundError:
         if verbose:
             print(f"{Fore.RED}[ERROR] Command not found: {command_parts[0]}{Style.RESET_ALL}")
@@ -94,17 +101,17 @@ def run_command_and_get_output(command_parts, verbose=False):
             print(f"{Fore.RED}[ERROR] Exception running command '{' '.join(command_parts)}': {e}{Style.RESET_ALL}")
         return None
 
-def get_urls_from_external_sources(domain, force_gau=False, force_wayback=False, verbose=False):
+def get_urls_from_external_sources(domain, force_gau=False, force_wayback=False, verbose=False, silent=False):
     """Fetch and process URLs using external tools."""
     urls = []
     temp_urls_file = f"{domain}_temp_external_urls.txt"
 
     # Check for gf and uro first as they are essential for processing
     if not check_tool_installed('gf'):
-        print(f"{Fore.RED}[ERROR] 'gf' tool not found. Please install it to use the --external feature.{Style.RESET_ALL}")
+        if not silent: print(f"{Fore.RED}[ERROR] 'gf' tool not found. Please install it to use the --external feature.{Style.RESET_ALL}")
         return []
     if not check_tool_installed('uro'):
-        print(f"{Fore.RED}[ERROR] 'uro' tool not found. Please install it to use the --external feature.{Style.RESET_ALL}")
+        if not silent: print(f"{Fore.RED}[ERROR] 'uro' tool not found. Please install it to use the --external feature.{Style.RESET_ALL}")
         return []
 
     # Step 1: Get URLs using gau or waybackurls
@@ -113,48 +120,54 @@ def get_urls_from_external_sources(domain, force_gau=False, force_wayback=False,
 
     if force_wayback:
         if check_tool_installed('waybackurls'):
-            print(f"{Fore.CYAN}[INFO] Using 'waybackurls' (forced) to fetch URLs for {domain}...{Style.RESET_ALL}")
+            if not silent: print(f"{Fore.CYAN}[INFO] Using 'waybackurls' (forced) to fetch URLs for {domain}...{Style.RESET_ALL}")
             source_tool_output = run_command_and_get_output(['waybackurls', domain], verbose=verbose)
             source_tool_name = "waybackurls"
         else:
-            print(f"{Fore.RED}[ERROR] 'waybackurls' was specified but not found. Please install it.{Style.RESET_ALL}")
+            if not silent: print(f"{Fore.RED}[ERROR] 'waybackurls' was specified but not found. Please install it.{Style.RESET_ALL}")
             return []
     elif force_gau:
         if check_tool_installed('gau'):
-            print(f"{Fore.CYAN}[INFO] Using 'gau' (forced) to fetch URLs for {domain}...{Style.RESET_ALL}")
+            if not silent: print(f"{Fore.CYAN}[INFO] Using 'gau' (forced) to fetch URLs for {domain}...{Style.RESET_ALL}")
             source_tool_output = run_command_and_get_output(['gau', domain], verbose=verbose)
             source_tool_name = "gau"
         else:
-            print(f"{Fore.RED}[ERROR] 'gau' was specified but not found. Please install it.{Style.RESET_ALL}")
+            if not silent: print(f"{Fore.RED}[ERROR] 'gau' was specified but not found. Please install it.{Style.RESET_ALL}")
             return []
     else: # Default behavior: try waybackurls first, then gau
         if check_tool_installed('waybackurls'):
-            print(f"{Fore.CYAN}[INFO] Using 'waybackurls' (default) to fetch URLs for {domain}...{Style.RESET_ALL}")
+            if not silent: print(f"{Fore.CYAN}[INFO] Using 'waybackurls' (default) to fetch URLs for {domain}...{Style.RESET_ALL}")
             source_tool_output = run_command_and_get_output(['waybackurls', domain], verbose=verbose)
             source_tool_name = "waybackurls"
         elif check_tool_installed('gau'):
-            print(f"{Fore.CYAN}[INFO] 'waybackurls' not found. Using 'gau' (fallback) to fetch URLs for {domain}...{Style.RESET_ALL}")
+            if not silent: print(f"{Fore.CYAN}[INFO] 'waybackurls' not found. Using 'gau' (fallback) to fetch URLs for {domain}...{Style.RESET_ALL}")
             source_tool_output = run_command_and_get_output(['gau', domain], verbose=verbose)
             source_tool_name = "gau"
         else:
-            print(f"{Fore.RED}[ERROR] Neither 'waybackurls' nor 'gau' found. Please install one of them to use the --external feature.{Style.RESET_ALL}")
+            if not silent: print(f"{Fore.RED}[ERROR] Neither 'waybackurls' nor 'gau' found. Please install one of them to use the --external feature.{Style.RESET_ALL}")
             return []
 
     if not source_tool_output:
-        print(f"{Fore.YELLOW}[WARNING] No URLs found by {source_tool_name or 'external source tool'} for {domain}.{Style.RESET_ALL}")
+        if not silent: print(f"{Fore.YELLOW}[WARNING] No URLs found by {source_tool_name or 'external source tool'} for {domain}.{Style.RESET_ALL}")
         return []
     
-    print(f"{Fore.GREEN}[INFO] {source_tool_name.capitalize()} found {len(source_tool_output)} initial URLs for {domain}.{Style.RESET_ALL}")
+    if not silent: print(f"{Fore.GREEN}[INFO] {source_tool_name.capitalize()} found {len(source_tool_output)} initial URLs for {domain}.{Style.RESET_ALL}")
+    if verbose and source_tool_output:
+        print(f"{Fore.BLUE}[VERBOSE] Raw URLs from {source_tool_name} ({len(source_tool_output)}):{Style.RESET_ALL}")
+        for i, url_ex in enumerate(source_tool_output[:5]):
+            print(f"{Fore.BLUE}[VERBOSE]   {i+1}: {url_ex}{Style.RESET_ALL}")
+        if len(source_tool_output) > 5:
+            print(f"{Fore.BLUE}[VERBOSE]   ... and {len(source_tool_output) - 5} more.{Style.RESET_ALL}")
 
     if not source_tool_output:
-        print(f"{Fore.YELLOW}[WARNING] No URLs found by an external source tool for {domain}.{Style.RESET_ALL}")
+        if not silent: print(f"{Fore.YELLOW}[WARNING] No URLs found by an external source tool for {domain}.{Style.RESET_ALL}")
         return []
     
-    print(f"{Fore.GREEN}[INFO] Found {len(source_tool_output)} initial URLs from source tool.{Style.RESET_ALL}")
+    if not silent: print(f"{Fore.GREEN}[INFO] Found {len(source_tool_output)} initial URLs from source tool.{Style.RESET_ALL}")
 
     # Step 2: Filter for redirect patterns using gf redirect
     # We need to pass the output of gau/waybackurls to gf via stdin
-    print(f"{Fore.CYAN}[INFO] Filtering URLs with 'gf redirect'...{Style.RESET_ALL}")
+    if not silent: print(f"{Fore.CYAN}[INFO] Filtering URLs with 'gf redirect'...{Style.RESET_ALL}")
     try:
         gf_process = subprocess.Popen(['gf', 'redirect'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         gf_stdout, gf_stderr = gf_process.communicate(input='\n'.join(source_tool_output))
@@ -165,20 +178,26 @@ def get_urls_from_external_sources(domain, force_gau=False, force_wayback=False,
         redirect_urls = gf_stdout.strip().splitlines()
     except FileNotFoundError:
         if verbose:
-            print(f"{Fore.RED}[ERROR] Command not found: gf{Style.RESET_ALL}")
+            if not silent: print(f"{Fore.RED}[ERROR] Command not found: gf{Style.RESET_ALL}")
         return [] # gf is checked above, but defensive
     except Exception as e:
         if verbose:
-            print(f"{Fore.RED}[ERROR] Exception running 'gf redirect': {e}{Style.RESET_ALL}")
+            if not silent: print(f"{Fore.RED}[ERROR] Exception running 'gf redirect': {e}{Style.RESET_ALL}")
         return []
 
     if not redirect_urls:
-        print(f"{Fore.YELLOW}[WARNING] No redirect URLs found by 'gf redirect'.{Style.RESET_ALL}")
+        if not silent: print(f"{Fore.YELLOW}[WARNING] No redirect URLs found by 'gf redirect'.{Style.RESET_ALL}")
         return []
-    print(f"{Fore.GREEN}[INFO] 'gf redirect' filtered down to {len(redirect_urls)} potential redirect URLs.{Style.RESET_ALL}")
+    if not silent: print(f"{Fore.GREEN}[INFO] 'gf redirect' filtered down to {len(redirect_urls)} potential redirect URLs.{Style.RESET_ALL}")
+    if verbose and redirect_urls:
+        print(f"{Fore.BLUE}[VERBOSE] URLs after 'gf redirect' ({len(redirect_urls)}):{Style.RESET_ALL}")
+        for i, url_ex in enumerate(redirect_urls[:5]):
+            print(f"{Fore.BLUE}[VERBOSE]   {i+1}: {url_ex}{Style.RESET_ALL}")
+        if len(redirect_urls) > 5:
+            print(f"{Fore.BLUE}[VERBOSE]   ... and {len(redirect_urls) - 5} more.{Style.RESET_ALL}")
 
     # Step 3: Deduplicate using uro
-    print(f"{Fore.CYAN}[INFO] Deduplicating URLs with 'uro'...{Style.RESET_ALL}")
+    if not silent: print(f"{Fore.CYAN}[INFO] Deduplicating URLs with 'uro'...{Style.RESET_ALL}")
     try:
         uro_process = subprocess.Popen(['uro'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         uro_stdout, uro_stderr = uro_process.communicate(input='\n'.join(redirect_urls))
@@ -189,247 +208,293 @@ def get_urls_from_external_sources(domain, force_gau=False, force_wayback=False,
         final_urls = uro_stdout.strip().splitlines()
     except FileNotFoundError:
         if verbose:
-            print(f"{Fore.RED}[ERROR] Command not found: uro{Style.RESET_ALL}")
+            if not silent: print(f"{Fore.RED}[ERROR] Command not found: uro{Style.RESET_ALL}")
         return [] # uro is checked above, but defensive
     except Exception as e:
         if verbose:
-            print(f"{Fore.RED}[ERROR] Exception running 'uro': {e}{Style.RESET_ALL}")
+            if not silent: print(f"{Fore.RED}[ERROR] Exception running 'uro': {e}{Style.RESET_ALL}")
         return []
 
     if not final_urls:
-        print(f"{Fore.YELLOW}[WARNING] No URLs left after 'uro' deduplication.{Style.RESET_ALL}")
+        if not silent: print(f"{Fore.YELLOW}[WARNING] No URLs left after 'uro' deduplication.{Style.RESET_ALL}")
         return []
-
-    print(f"{Fore.GREEN}[INFO] 'uro' deduplicated the list to {len(final_urls)} unique URLs.{Style.RESET_ALL}")
-    print(f"{Fore.CYAN}[INFO] Starting scan with {len(final_urls)} URLs for {domain}.{Style.RESET_ALL}")
+    if not silent: print(f"{Fore.GREEN}[INFO] 'uro' deduplicated to {len(final_urls)} final URLs.{Style.RESET_ALL}")
+    if verbose and final_urls:
+        print(f"{Fore.BLUE}[VERBOSE] URLs after 'uro' deduplication ({len(final_urls)}):{Style.RESET_ALL}")
+        for i, url_ex in enumerate(final_urls[:5]):
+            print(f"{Fore.BLUE}[VERBOSE]   {i+1}: {url_ex}{Style.RESET_ALL}")
+        if len(final_urls) > 5:
+            print(f"{Fore.BLUE}[VERBOSE]   ... and {len(final_urls) - 5} more.{Style.RESET_ALL}")
+    if not silent: print(f"{Fore.CYAN}[INFO] Starting scan with {len(final_urls)} URLs for {domain}.{Style.RESET_ALL}")
     return final_urls
+
+def display_scan_results(results_list, args, domain_name=None):
+    """Display formatted scan results for a given list of findings."""
+    vulnerable_results = [r for r in results_list if r.get('vulnerable', False)]
+
+    if domain_name:
+        if not args.silent: print(f"\n{Fore.MAGENTA}{'='*20} Results for Domain: {domain_name} {'='*20}{Style.RESET_ALL}")
+
+    if vulnerable_results:
+        # Group results by method for summary
+        results_by_method = {}
+        for res in vulnerable_results:
+            method = res.get('method', 'Unknown')
+            if method not in results_by_method:
+                results_by_method[method] = []
+            results_by_method[method].append(res)
+        
+        if not args.silent: print(f"\n{Fore.RED}🔥 VULNERABILITY SUMMARY ({domain_name or 'Overall'}):{Style.RESET_ALL}")
+        for method, method_results in results_by_method.items():
+            # Determine overall severity for this method group (highest found)
+            severities = [r.get('severity', 'Low') for r in method_results]
+            highest_severity = 'Low'
+            if 'High' in severities: highest_severity = 'High'
+            elif 'Medium' in severities: highest_severity = 'Medium'
+            
+            severity_color = {
+                'High': Fore.RED, 'Medium': Fore.YELLOW, 'Low': Fore.CYAN
+            }.get(highest_severity, Fore.WHITE)
+            severity_str = f"{severity_color}{highest_severity}{Style.RESET_ALL}"
+            
+            method_icon = {
+                'URL Parameter': '🌐', 'Meta Refresh': '🔄', 
+                'JavaScript Redirect': '⚡', 'Header Injection': '📋',
+                'Form POST Redirect': '📝', 'Cookie-based Redirect': '🍪'
+            }.get(method, '🔍')
+            if not args.silent: print(f"  {method_icon} {Fore.YELLOW}{method}: {len(method_results)} findings ({severity_str}){Style.RESET_ALL}")
+        
+        if not args.silent: print(f"\n{Fore.RED}🚨 DETAILED VULNERABILITY FINDINGS ({domain_name or 'Overall'}):{Style.RESET_ALL}")
+        if not args.silent: print(f"{Fore.RED}{'-'*80}{Style.RESET_ALL}")
+        
+        for i, result in enumerate(vulnerable_results, 1):
+            method_icon = {
+                'URL Parameter': '🌐', 'Meta Refresh': '🔄', 
+                'JavaScript Redirect': '⚡', 'Header Injection': '📋',
+                'Form POST Redirect': '📝', 'Cookie-based Redirect': '🍪'
+            }.get(result.get('method', 'Unknown'), '🔍')
+            
+            severity = result.get('severity', 'Medium')
+            severity_color = {
+                'High': Fore.RED, 'Medium': Fore.YELLOW, 'Low': Fore.CYAN
+            }.get(severity, Fore.WHITE)
+            
+            if not args.silent: print(f"\n{Fore.RED}[{i:02d}] {method_icon} VULNERABILITY FOUND{Style.RESET_ALL}")
+            if not args.silent: print(f"    {Fore.CYAN}URL: {result['url']}{Style.RESET_ALL}")
+            if not args.silent: print(f"    {Fore.YELLOW}Type: {result.get('method', 'Unknown')}{Style.RESET_ALL}")
+            if not args.silent: print(f"    {Fore.YELLOW}Payload: {result['payload']}{Style.RESET_ALL}")
+            
+            if 'parameter' in result:
+                if not args.silent: print(f"    {Fore.YELLOW}Parameter: {result['parameter']}{Style.RESET_ALL}")
+            elif 'header' in result:
+                if not args.silent: print(f"    {Fore.YELLOW}Header: {result['header']}{Style.RESET_ALL}")
+            elif 'cookie' in result:
+                if not args.silent: print(f"    {Fore.YELLOW}Cookie: {result['cookie']}{Style.RESET_ALL}")
+            
+            if not args.silent: print(f"    {severity_color}Severity: {severity}{Style.RESET_ALL}")
+            
+            if args.status_codes and 'status_code' in result:
+                if not args.silent: print(f"    {Fore.YELLOW}Status Code: {result['status_code']}{Style.RESET_ALL}")
+            
+            if 'redirect_location' in result:
+                if not args.silent: print(f"    {Fore.YELLOW}Redirects To: {result['redirect_location']}{Style.RESET_ALL}")
+                
+            if 'redirect_chain' in result and result['redirect_chain']:
+                if not args.silent: print(f"    {Fore.YELLOW}Redirect Chain: {' -> '.join(result['redirect_chain'])}{Style.RESET_ALL}")
+        
+        if not args.silent: print(f"\n{Fore.GREEN}✅ Scan completed for {domain_name or 'target(s)'} - {len(vulnerable_results)} vulnerabilities found{Style.RESET_ALL}")
+    else:
+        if not args.silent: print(f"\n{Fore.GREEN}✅ [SECURE] No open redirect vulnerabilities detected for {domain_name or 'target(s)'}.{Style.RESET_ALL}")
+        if domain_name: # Only show this extra line if it's for a specific domain context
+             if not args.silent: print(f"{Fore.GREEN}🛡️  {domain_name} appears to be properly protected against open redirect attacks based on this scan.{Style.RESET_ALL}")
+
+def display_final_scan_summary(all_scan_results, scanner_obj, scan_start_time, scan_end_time, cli_args):
+    """Displays the overall scan summary, total requests, and time taken."""
+    if not cli_args.silent:
+        print(f"\n{Fore.CYAN}{'*'*20} Overall Scan Summary {'*'*20}{Style.RESET_ALL}")
+        total_vulnerabilities_found = sum(1 for r in all_scan_results if r.get('vulnerable', False))
+        if total_vulnerabilities_found > 0:
+            print(f"{Fore.RED}🔥 Total vulnerabilities found across all targets: {total_vulnerabilities_found}{Style.RESET_ALL}")
+        else:
+            print(f"{Fore.GREEN}✅ No vulnerabilities found across all scanned targets.{Style.RESET_ALL}")
+
+        print(f"\n{Fore.CYAN}[INFO] Total requests made: {scanner_obj.get_total_requests()}{Style.RESET_ALL}")
+        print(f"\n{Fore.CYAN}[INFO] Total scan time: {scan_end_time - scan_start_time:.2f} seconds{Style.RESET_ALL}")
 
 def main():
     """Main function"""
     args = parse_arguments()
-    
-    # Display banner unless silent mode
-    if not args.silent:
-        display_banner()
-    
-    # Validate input arguments
-    # This is now handled by argparse mutually_exclusive_group(required=True)
-    # if not args.url and not args.list and not args.external:
-    #     parser.print_help()
-    #     print(f"{Fore.RED}[ERROR] You must specify a target: -u, -l, or -e{Style.RESET_ALL}")
-    #     sys.exit(1)
-    
-    # Prepare target URLs
-    target_urls = []
-    
-    if args.url:
-        if not validate_url(args.url):
-            print(f"{Fore.RED}[ERROR] Invalid URL format: {args.url}{Style.RESET_ALL}")
-            sys.exit(1)
-        target_urls.append(args.url)
-    
-    if args.list:
-        if not os.path.exists(args.list):
-            print(f"{Fore.RED}[ERROR] URL list file not found: {args.list}{Style.RESET_ALL}")
-            sys.exit(1)
-        
-        list_urls = load_urls_from_file(args.list)
-        if not list_urls:
-            print(f"{Fore.RED}[ERROR] No valid URLs found in file: {args.list}{Style.RESET_ALL}")
-            sys.exit(1)
-        target_urls.extend(list_urls)
-    
-    if args.external:
-        domains_to_process_externally = []
-        potential_target = args.external
+    exit_code = 0  # Default to success
+    scanner = None # Initialize scanner to None for finally block access
+    start_time = time.time() # Initialize start_time
+    domains_to_process_externally = [] # Initialize for broader scope if needed by final messages
 
-        if os.path.exists(potential_target) and os.path.isfile(potential_target):
-            print(f"{Fore.CYAN}[INFO] Reading domains from file for external processing: {potential_target}{Style.RESET_ALL}")
-            try:
-                with open(potential_target, 'r') as f:
-                    domains_from_file = [line.strip() for line in f if line.strip() and not line.startswith('#')]
-                if not domains_from_file:
-                    print(f"{Fore.RED}[ERROR] No domains found in file: {potential_target}{Style.RESET_ALL}")
-                    sys.exit(1)
-                domains_to_process_externally.extend(domains_from_file)
-                print(f"{Fore.GREEN}[INFO] Found {len(domains_from_file)} domain(s) in {potential_target} for external processing.{Style.RESET_ALL}")
-            except Exception as e:
-                print(f"{Fore.RED}[ERROR] Could not read domains from file {potential_target}: {e}{Style.RESET_ALL}")
-                sys.exit(1)
-        else:
-            # Assume it's a single domain if not a valid file path
-            domains_to_process_externally.append(potential_target)
-            print(f"{Fore.CYAN}[INFO] Processing single domain for external gathering: {potential_target}{Style.RESET_ALL}")
-
-        for domain_item in domains_to_process_externally:
-            print(f"{Fore.BLUE}{'-'*20} Processing Domain: {domain_item} {'-'*20}{Style.RESET_ALL}")
-            external_urls_for_domain = get_urls_from_external_sources(
-                domain_item,
-                args.e_gau,
-                args.e_wayback,
-                args.verbose
-            )
-            if external_urls_for_domain:
-                target_urls.extend(external_urls_for_domain)
-            else:
-                print(f"{Fore.YELLOW}[WARNING] No URLs obtained from external tools for domain: {domain_item}{Style.RESET_ALL}")
-        
-        if not target_urls:
-            print(f"{Fore.RED}[ERROR] No URLs gathered from external processing for the provided target(s). Exiting.{Style.RESET_ALL}")
-            sys.exit(1)
-    
-    if not target_urls:
-        print(f"{Fore.RED}[ERROR] No valid URLs to scan{Style.RESET_ALL}")
-        sys.exit(1)
-    
-    # Initialize scanner with configuration
-    scanner_config = {
-        'threads': args.threads,
-        'timeout': args.timeout,
-        'delay': args.delay / 1000 if args.delay else 0,  # Convert ms to seconds
-        'user_agent': args.user_agent,
-        'proxy': args.proxy,
-        'follow_redirects': args.follow_redirects,
-        'headers_test': args.headers,
-        'callback_url': args.callback,
-        'custom_payloads': args.payloads,
-        'verbose': args.verbose,
-        'status_codes': args.status_codes,
-        'fast': args.fast
-    }
-    
-    scanner = OpenRedirectScanner(scanner_config)
-    
-    # Display scan information
-    if not args.silent:
-        print(f"{Fore.CYAN}[INFO] Target URLs: {len(target_urls)}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}[INFO] Threads: {args.threads}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}[INFO] Timeout: {args.timeout}s{Style.RESET_ALL}")
-        if args.headers:
-            print(f"{Fore.CYAN}[INFO] Header injection testing: Enabled{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}[INFO] Starting scan...{Style.RESET_ALL}\n")
-    
-    # Start scanning
-    start_time = time.time()
-    
     try:
-        results = scanner.scan_urls(target_urls)
-        
-        # Calculate scan statistics
-        scan_time = time.time() - start_time
-        total_requests = scanner.get_total_requests()
-        vulnerable_count = len([r for r in results if r['vulnerable']])
-        
+        # Display banner unless silent mode
         if not args.silent:
-            print(f"\n{Fore.GREEN}[COMPLETED] Scan finished in {scan_time:.2f} seconds{Style.RESET_ALL}")
-            print(f"{Fore.CYAN}[STATS] Total requests: {total_requests}{Style.RESET_ALL}")
-            print(f"{Fore.CYAN}[STATS] Vulnerable URLs: {vulnerable_count}/{len(target_urls)}{Style.RESET_ALL}")
+            display_banner()
+
+        # Prepare target URLs (for -u and -l modes)
+        target_urls = []
+        if args.url:
+            if not validate_url(args.url):
+                if not args.silent: print(f"{Fore.RED}[ERROR] Invalid URL format: {args.url}{Style.RESET_ALL}")
+                sys.exit(1)
+            target_urls.append(args.url)
         
-        # Display results with enhanced UI
-        if results:
-            vulnerable_results = [r for r in results if r['vulnerable']]
-            if vulnerable_results:
-                # Group results by method for better display
-                results_by_method = {}
-                for result in vulnerable_results:
-                    method = result.get('method', 'Unknown')
-                    if method not in results_by_method:
-                        results_by_method[method] = []
-                    results_by_method[method].append(result)
-                
-                print(f"\n{Fore.RED}{'='*80}")
-                print(f"{Fore.RED}🔍 OPEN REDIRECT VULNERABILITIES DETECTED")
-                print(f"{Fore.RED}{'='*80}{Style.RESET_ALL}")
-                
-                # Summary by method
-                print(f"\n{Fore.CYAN}📊 VULNERABILITY SUMMARY BY TYPE:")
-                for method, method_results in results_by_method.items():
-                    method_icon = {
-                        'URL Parameter': '🌐',
-                        'Meta Refresh': '🔄',
-                        'JavaScript Redirect': '⚡',
-                        'Header Injection': '📋',
-                        'Form POST Redirect': '📝',
-                        'Cookie-based Redirect': '🍪'
-                    }.get(method, '🔍')
-                    
-                    severity_counts = {}
-                    for r in method_results:
-                        sev = r.get('severity', 'Medium')
-                        severity_counts[sev] = severity_counts.get(sev, 0) + 1
-                    
-                    severity_str = ', '.join([f"{sev}: {count}" for sev, count in severity_counts.items()])
-                    print(f"  {method_icon} {Fore.YELLOW}{method}: {len(method_results)} findings ({severity_str}){Style.RESET_ALL}")
-                
-                print(f"\n{Fore.RED}🚨 DETAILED VULNERABILITY FINDINGS:")
-                print(f"{Fore.RED}{'-'*80}{Style.RESET_ALL}")
-                
-                for i, result in enumerate(vulnerable_results, 1):
-                    # Get method icon
-                    method_icon = {
-                        'URL Parameter': '🌐',
-                        'Meta Refresh': '🔄', 
-                        'JavaScript Redirect': '⚡',
-                        'Header Injection': '📋',
-                        'Form POST Redirect': '📝',
-                        'Cookie-based Redirect': '🍪'
-                    }.get(result.get('method', 'Unknown'), '🔍')
-                    
-                    # Get severity color
-                    severity = result.get('severity', 'Medium')
-                    severity_color = {
-                        'High': Fore.RED,
-                        'Medium': Fore.YELLOW, 
-                        'Low': Fore.CYAN
-                    }.get(severity, Fore.WHITE)
-                    
-                    print(f"\n{Fore.RED}[{i:02d}] {method_icon} VULNERABILITY FOUND{Style.RESET_ALL}")
-                    print(f"    {Fore.CYAN}URL: {result['url']}{Style.RESET_ALL}")
-                    print(f"    {Fore.YELLOW}Type: {result.get('method', 'Unknown')}{Style.RESET_ALL}")
-                    print(f"    {Fore.YELLOW}Payload: {result['payload']}{Style.RESET_ALL}")
-                    
-                    # Show parameter or header or cookie
-                    if 'parameter' in result:
-                        print(f"    {Fore.YELLOW}Parameter: {result['parameter']}{Style.RESET_ALL}")
-                    elif 'header' in result:
-                        print(f"    {Fore.YELLOW}Header: {result['header']}{Style.RESET_ALL}")
-                    elif 'cookie' in result:
-                        print(f"    {Fore.YELLOW}Cookie: {result['cookie']}{Style.RESET_ALL}")
-                    
-                    print(f"    {severity_color}Severity: {severity}{Style.RESET_ALL}")
-                    
-                    if args.status_codes and 'status_code' in result:
-                        print(f"    {Fore.YELLOW}Status Code: {result['status_code']}{Style.RESET_ALL}")
-                    
-                    if 'redirect_location' in result:
-                        print(f"    {Fore.YELLOW}Redirects To: {result['redirect_location']}{Style.RESET_ALL}")
-                        
-                    if 'redirect_chain' in result and result['redirect_chain']:
-                        print(f"    {Fore.YELLOW}Redirect Chain: {' -> '.join(result['redirect_chain'])}{Style.RESET_ALL}")
-                
-                print(f"\n{Fore.GREEN}✅ Scan completed successfully - {len(vulnerable_results)} vulnerabilities found{Style.RESET_ALL}")
+        if args.list:
+            if not os.path.exists(args.list):
+                if not args.silent: print(f"{Fore.RED}[ERROR] URL list file not found: {args.list}{Style.RESET_ALL}")
+                sys.exit(1)
+            
+            list_urls = load_urls_from_file(args.list)
+            if not list_urls:
+                if not args.silent: print(f"{Fore.RED}[ERROR] No valid URLs found in file: {args.list}{Style.RESET_ALL}")
+                sys.exit(1)
+            target_urls.extend(list_urls)
+
+        all_scan_results_accumulator = []
+
+        scanner_config = {
+            'threads': args.threads,
+            'timeout': args.timeout,
+            'delay': args.delay / 1000 if args.delay else 0,
+            'user_agent': args.user_agent,
+            'proxy': args.proxy,
+            'follow_redirects': args.follow_redirects,
+            'headers_test': args.headers,
+            'callback_url': args.callback,
+            'custom_payloads': args.payloads,
+            'verbose': args.verbose,
+            'status_codes': args.status_codes,
+            'fast': args.fast
+        }
+        scanner = OpenRedirectScanner(scanner_config)
+
+        # Main processing logic based on input mode
+        if args.external:
+            # domains_to_process_externally is re-initialized here for this specific block
+            domains_to_process_externally = [] 
+            potential_target = args.external
+
+            if os.path.exists(potential_target) and os.path.isfile(potential_target):
+                if not args.silent:
+                    print(f"{Fore.CYAN}[INFO] Reading domains from file for external processing: {potential_target}{Style.RESET_ALL}")
+                try:
+                    with open(potential_target, 'r') as f:
+                        domains_from_file = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+                    if not domains_from_file:
+                        if not args.silent: print(f"{Fore.RED}[ERROR] No domains found in file: {potential_target}. Exiting.{Style.RESET_ALL}")
+                        sys.exit(1)
+                    domains_to_process_externally.extend(domains_from_file)
+                    if not args.silent:
+                        print(f"{Fore.GREEN}[INFO] Found {len(domains_from_file)} domain(s) in {potential_target} for external processing.{Style.RESET_ALL}")
+                except Exception as e:
+                    if not args.silent: print(f"{Fore.RED}[ERROR] Could not read domains from file {potential_target}: {e}. Exiting.{Style.RESET_ALL}")
+                    sys.exit(1)
             else:
-                print(f"\n{Fore.GREEN}✅ [SECURE] No open redirect vulnerabilities detected{Style.RESET_ALL}")
-                print(f"{Fore.GREEN}🛡️  The application appears to be properly protected against open redirect attacks{Style.RESET_ALL}")
+                domains_to_process_externally.append(potential_target)
+            
+            if not domains_to_process_externally:
+                 if not args.silent: print(f"{Fore.RED}[ERROR] No domains specified for external processing. Exiting.{Style.RESET_ALL}")
+                 sys.exit(1)
+
+            total_domains_to_process = len(domains_to_process_externally)
+            for i, domain_item in enumerate(domains_to_process_externally):
+                if not args.silent:
+                    print(f"\n{Fore.BLUE}{'='*20} Processing Domain {i+1}/{total_domains_to_process}: {domain_item} {'='*20}{Style.RESET_ALL}")
+                
+                current_domain_urls = get_urls_from_external_sources(
+                    domain_item,
+                    args.e_gau,
+                    args.e_wayback,
+                    args.verbose,
+                    args.silent # Pass args.silent here
+                )
+
+                if current_domain_urls:
+                    if not args.silent:
+                        print(f"\n{Fore.CYAN}[INFO] Starting scan for {domain_item} with {len(current_domain_urls)} URLs using {args.threads} threads...{Style.RESET_ALL}")
+                    if args.verbose:
+                        print(f"{Fore.CYAN}[DEBUG] Scanner Config for {domain_item}: {scanner_config}{Style.RESET_ALL}")
+                    
+                    domain_results = scanner.scan_urls(current_domain_urls)
+                    # display_scan_results handles its own silent logic via args
+                    if not args.silent: display_scan_results(domain_results, args, domain_name=domain_item)
+                    if domain_results:
+                        all_scan_results_accumulator.extend(domain_results)
+                elif not args.silent:
+                    print(f"{Fore.YELLOW}[WARNING] No URLs obtained from external tools for domain: {domain_item}. Skipping scan for this domain.{Style.RESET_ALL}")
+                
+                if not args.silent: # Message after each domain is processed
+                    print(f"{Fore.BLUE}{'='*20} Finished Processing Domain: {domain_item} {'='*20}{Style.RESET_ALL}")
+
+        elif args.url or args.list: # -u or -l mode (single batch scan)
+            if not target_urls: 
+                if not args.silent: print(f"{Fore.RED}[ERROR] No valid URLs to scan (from -u or -l). Exiting.{Style.RESET_ALL}")
+                sys.exit(1)
+
+            if not args.silent:
+                print(f"\n{Fore.CYAN}[INFO] Starting scan with {len(target_urls)} URLs using {args.threads} threads...{Style.RESET_ALL}")
+            if args.verbose:
+                print(f"{Fore.CYAN}[DEBUG] Scanner Config: {scanner_config}{Style.RESET_ALL}")
+            
+            results = scanner.scan_urls(target_urls)
+            # display_scan_results handles its own silent logic via args
+            if not args.silent: display_scan_results(results, args)
+            if results:
+                all_scan_results_accumulator.extend(results)
         
-        # Save output if specified
+        else: # No input mode specified (-u, -l, or -e)
+            if not args.silent:
+                print(f"{Fore.RED}[ERROR] No input specified. Use -u, -l, or -e.{Style.RESET_ALL}")
+                parse_arguments().print_help() # Show help
+            sys.exit(1)
+
+        # Common post-scan logic (after all processing modes)
+        end_time = time.time()
+
+        if not args.silent:
+            # Conditional messages based on findings before final summary
+            if args.external and not all_scan_results_accumulator and domains_to_process_externally:
+                 print(f"\n{Fore.YELLOW}[INFO] External processing completed. No vulnerabilities were found across all processed domains.{Style.RESET_ALL}")
+            elif (args.url or args.list) and not all_scan_results_accumulator:
+                print(f"\n{Fore.YELLOW}[INFO] Scan of provided URLs completed. No vulnerabilities were found.{Style.RESET_ALL}")
+            
+            # display_final_scan_summary handles its own silent logic via args
+            if scanner: # Ensure scanner is initialized before passing to summary
+                display_final_scan_summary(all_scan_results_accumulator, scanner, start_time, end_time, args)
+            else:
+                # Handle case where scanner might not be initialized if an error occurred very early
+                print(f"{Fore.YELLOW}[WARNING] Scan did not fully initialize. Final summary may be incomplete.{Style.RESET_ALL}")
+
         if args.output:
-            output_manager = OutputManager()
-            success = output_manager.save_results(results, args.output)
-            if success:
-                print(f"\n{Fore.GREEN}[INFO] Results saved to: {args.output}{Style.RESET_ALL}")
-            else:
-                print(f"\n{Fore.RED}[ERROR] Failed to save results to: {args.output}{Style.RESET_ALL}")
-        
+            if all_scan_results_accumulator:
+                output_manager = OutputManager() # Assuming OutputManager is defined elsewhere
+                success = output_manager.save_results(all_scan_results_accumulator, args.output)
+                if success and not args.silent:
+                    print(f"\n{Fore.GREEN}[INFO] All results saved to: {args.output}{Style.RESET_ALL}")
+                elif not success and not args.silent:
+                    print(f"\n{Fore.RED}[ERROR] Failed to save all results to: {args.output}{Style.RESET_ALL}")
+            elif not args.silent: # Only print if not silent and no results to save
+                print(f"\n{Fore.YELLOW}[INFO] No results to save to output file.{Style.RESET_ALL}")
+
     except KeyboardInterrupt:
-        print(f"\n{Fore.YELLOW}[INFO] Scan interrupted by user{Style.RESET_ALL}")
-        sys.exit(0)
+        if not args.silent:
+            print(f"\n{Fore.YELLOW}[INFO] Scan interrupted by user.{Style.RESET_ALL}")
+        exit_code = 1 # Indicate interruption
+    except SystemExit as e: # Catch sys.exit() calls to ensure finally block runs
+        exit_code = e.code if isinstance(e.code, int) else 1 # Use exit code if provided, else 1
     except Exception as e:
-        print(f"\n{Fore.RED}[ERROR] Unexpected error: {str(e)}{Style.RESET_ALL}")
-        if args.verbose:
-            import traceback
-            traceback.print_exc()
-        sys.exit(1)
+        if not args.silent:
+            print(f"\n{Fore.RED}[CRITICAL ERROR] An unexpected error occurred: {str(e)}{Style.RESET_ALL}")
+            if args.verbose:
+                traceback.print_exc()
+        exit_code = 1 # Indicate critical error
+    finally:
+        if not args.silent:
+            print(f"\n{Fore.CYAN}[INFO] OpenXScanner finished.{Style.RESET_ALL}")
+        sys.exit(exit_code) # Ensure script exits with appropriate code
 
 if __name__ == "__main__":
     main()
