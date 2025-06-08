@@ -44,6 +44,11 @@ Examples:
     target_group.add_argument('-l', '--list', help='Path to file containing list of URLs to scan (one URL per line)')
     target_group.add_argument('-e', '--external', metavar='DOMAIN', help='Domain to gather URLs from using external tools (gau/waybackurls, gf, uro)')
 
+    # External tool specifiers (optional, only relevant with -e)
+    external_tool_group = parser.add_mutually_exclusive_group()
+    external_tool_group.add_argument('--e-gau', action='store_true', help='Force use of GAU for URL gathering with -e')
+    external_tool_group.add_argument('--e-wayback', action='store_true', help='Force use of Waybackurls for URL gathering with -e')
+
     parser.add_argument('-o', '--output', help='Output file path with format auto-detection')
     parser.add_argument('-c', '--callback', help='Callback URL (Burp Collaborator or custom endpoint)')
     
@@ -89,7 +94,7 @@ def run_command_and_get_output(command_parts, verbose=False):
             print(f"{Fore.RED}[ERROR] Exception running command '{' '.join(command_parts)}': {e}{Style.RESET_ALL}")
         return None
 
-def get_urls_from_external_sources(domain, verbose=False):
+def get_urls_from_external_sources(domain, force_gau=False, force_wayback=False, verbose=False):
     """Fetch and process URLs using external tools."""
     urls = []
     temp_urls_file = f"{domain}_temp_external_urls.txt"
@@ -104,15 +109,42 @@ def get_urls_from_external_sources(domain, verbose=False):
 
     # Step 1: Get URLs using gau or waybackurls
     source_tool_output = None
-    if check_tool_installed('gau'):
-        print(f"{Fore.CYAN}[INFO] Using 'gau' to fetch URLs for {domain}...{Style.RESET_ALL}")
-        source_tool_output = run_command_and_get_output(['gau', domain], verbose=verbose)
-    elif check_tool_installed('waybackurls'):
-        print(f"{Fore.CYAN}[INFO] 'gau' not found. Using 'waybackurls' to fetch URLs for {domain}...{Style.RESET_ALL}")
-        source_tool_output = run_command_and_get_output(['waybackurls', domain], verbose=verbose)
-    else:
-        print(f"{Fore.RED}[ERROR] Neither 'gau' nor 'waybackurls' found. Please install one of them.{Style.RESET_ALL}")
+    source_tool_name = ""
+
+    if force_wayback:
+        if check_tool_installed('waybackurls'):
+            print(f"{Fore.CYAN}[INFO] Using 'waybackurls' (forced) to fetch URLs for {domain}...{Style.RESET_ALL}")
+            source_tool_output = run_command_and_get_output(['waybackurls', domain], verbose=verbose)
+            source_tool_name = "waybackurls"
+        else:
+            print(f"{Fore.RED}[ERROR] 'waybackurls' was specified but not found. Please install it.{Style.RESET_ALL}")
+            return []
+    elif force_gau:
+        if check_tool_installed('gau'):
+            print(f"{Fore.CYAN}[INFO] Using 'gau' (forced) to fetch URLs for {domain}...{Style.RESET_ALL}")
+            source_tool_output = run_command_and_get_output(['gau', domain], verbose=verbose)
+            source_tool_name = "gau"
+        else:
+            print(f"{Fore.RED}[ERROR] 'gau' was specified but not found. Please install it.{Style.RESET_ALL}")
+            return []
+    else: # Default behavior: try waybackurls first, then gau
+        if check_tool_installed('waybackurls'):
+            print(f"{Fore.CYAN}[INFO] Using 'waybackurls' (default) to fetch URLs for {domain}...{Style.RESET_ALL}")
+            source_tool_output = run_command_and_get_output(['waybackurls', domain], verbose=verbose)
+            source_tool_name = "waybackurls"
+        elif check_tool_installed('gau'):
+            print(f"{Fore.CYAN}[INFO] 'waybackurls' not found. Using 'gau' (fallback) to fetch URLs for {domain}...{Style.RESET_ALL}")
+            source_tool_output = run_command_and_get_output(['gau', domain], verbose=verbose)
+            source_tool_name = "gau"
+        else:
+            print(f"{Fore.RED}[ERROR] Neither 'waybackurls' nor 'gau' found. Please install one of them to use the --external feature.{Style.RESET_ALL}")
+            return []
+
+    if not source_tool_output:
+        print(f"{Fore.YELLOW}[WARNING] No URLs found by {source_tool_name or 'external source tool'} for {domain}.{Style.RESET_ALL}")
         return []
+    
+    print(f"{Fore.GREEN}[INFO] {source_tool_name.capitalize()} found {len(source_tool_output)} initial URLs for {domain}.{Style.RESET_ALL}")
 
     if not source_tool_output:
         print(f"{Fore.YELLOW}[WARNING] No URLs found by an external source tool for {domain}.{Style.RESET_ALL}")
@@ -143,7 +175,7 @@ def get_urls_from_external_sources(domain, verbose=False):
     if not redirect_urls:
         print(f"{Fore.YELLOW}[WARNING] No redirect URLs found by 'gf redirect'.{Style.RESET_ALL}")
         return []
-    print(f"{Fore.GREEN}[INFO] Found {len(redirect_urls)} potential redirect URLs after 'gf redirect'.{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}[INFO] 'gf redirect' filtered down to {len(redirect_urls)} potential redirect URLs.{Style.RESET_ALL}")
 
     # Step 3: Deduplicate using uro
     print(f"{Fore.CYAN}[INFO] Deduplicating URLs with 'uro'...{Style.RESET_ALL}")
@@ -168,7 +200,8 @@ def get_urls_from_external_sources(domain, verbose=False):
         print(f"{Fore.YELLOW}[WARNING] No URLs left after 'uro' deduplication.{Style.RESET_ALL}")
         return []
 
-    print(f"{Fore.GREEN}[INFO] Final list contains {len(final_urls)} unique redirect URLs for {domain}.{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}[INFO] 'uro' deduplicated the list to {len(final_urls)} unique URLs.{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}[INFO] Starting scan with {len(final_urls)} URLs for {domain}.{Style.RESET_ALL}")
     return final_urls
 
 def main():
@@ -207,8 +240,8 @@ def main():
         target_urls.extend(list_urls)
     
     if args.external:
-        print(f"{Fore.CYAN}[INFO] Using external tools to gather URLs for domain: {args.external}{Style.RESET_ALL}")
-        external_urls = get_urls_from_external_sources(args.external, args.verbose)
+        # Pass the new flags to the function
+        external_urls = get_urls_from_external_sources(args.external, args.e_gau, args.e_wayback, args.verbose)
         if not external_urls:
             print(f"{Fore.YELLOW}[WARNING] No URLs obtained from external tools for domain {args.external}. Exiting.{Style.RESET_ALL}")
             sys.exit(1)
