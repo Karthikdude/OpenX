@@ -42,7 +42,7 @@ Examples:
     target_group = parser.add_mutually_exclusive_group(required=True)
     target_group.add_argument('-u', '--url', help='Single target URL for scanning')
     target_group.add_argument('-l', '--list', help='Path to file containing list of URLs to scan (one URL per line)')
-    target_group.add_argument('-e', '--external', metavar='DOMAIN', help='Domain to gather URLs from using external tools (gau/waybackurls, gf, uro)')
+    target_group.add_argument('-e', '--external', metavar='DOMAIN_OR_FILE', help='Domain or path to file (one domain per line) to gather URLs from using external tools (gau/waybackurls, gf, uro)')
 
     # External tool specifiers (optional, only relevant with -e)
     external_tool_group = parser.add_mutually_exclusive_group()
@@ -240,12 +240,43 @@ def main():
         target_urls.extend(list_urls)
     
     if args.external:
-        # Pass the new flags to the function
-        external_urls = get_urls_from_external_sources(args.external, args.e_gau, args.e_wayback, args.verbose)
-        if not external_urls:
-            print(f"{Fore.YELLOW}[WARNING] No URLs obtained from external tools for domain {args.external}. Exiting.{Style.RESET_ALL}")
+        domains_to_process_externally = []
+        potential_target = args.external
+
+        if os.path.exists(potential_target) and os.path.isfile(potential_target):
+            print(f"{Fore.CYAN}[INFO] Reading domains from file for external processing: {potential_target}{Style.RESET_ALL}")
+            try:
+                with open(potential_target, 'r') as f:
+                    domains_from_file = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+                if not domains_from_file:
+                    print(f"{Fore.RED}[ERROR] No domains found in file: {potential_target}{Style.RESET_ALL}")
+                    sys.exit(1)
+                domains_to_process_externally.extend(domains_from_file)
+                print(f"{Fore.GREEN}[INFO] Found {len(domains_from_file)} domain(s) in {potential_target} for external processing.{Style.RESET_ALL}")
+            except Exception as e:
+                print(f"{Fore.RED}[ERROR] Could not read domains from file {potential_target}: {e}{Style.RESET_ALL}")
+                sys.exit(1)
+        else:
+            # Assume it's a single domain if not a valid file path
+            domains_to_process_externally.append(potential_target)
+            print(f"{Fore.CYAN}[INFO] Processing single domain for external gathering: {potential_target}{Style.RESET_ALL}")
+
+        for domain_item in domains_to_process_externally:
+            print(f"{Fore.BLUE}{'-'*20} Processing Domain: {domain_item} {'-'*20}{Style.RESET_ALL}")
+            external_urls_for_domain = get_urls_from_external_sources(
+                domain_item,
+                args.e_gau,
+                args.e_wayback,
+                args.verbose
+            )
+            if external_urls_for_domain:
+                target_urls.extend(external_urls_for_domain)
+            else:
+                print(f"{Fore.YELLOW}[WARNING] No URLs obtained from external tools for domain: {domain_item}{Style.RESET_ALL}")
+        
+        if not target_urls:
+            print(f"{Fore.RED}[ERROR] No URLs gathered from external processing for the provided target(s). Exiting.{Style.RESET_ALL}")
             sys.exit(1)
-        target_urls.extend(external_urls)
     
     if not target_urls:
         print(f"{Fore.RED}[ERROR] No valid URLs to scan{Style.RESET_ALL}")
