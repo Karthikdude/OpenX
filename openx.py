@@ -18,6 +18,7 @@ from core.output import OutputManager
 from core.utils import display_banner, validate_url, load_urls_from_file
 import shutil
 import subprocess
+from urllib.parse import urlparse, parse_qs
 
 # Initialize colorama for cross-platform colored output
 init(autoreset=True)
@@ -66,8 +67,51 @@ Examples:
     parser.add_argument('--silent', action='store_true', help='Suppress banner and non-essential output')
     parser.add_argument('-f', '--fast', action='store_true',
                         help='Fast mode: stop testing URL after first vulnerability found')
+    parser.add_argument('-s', '--small', action='store_true',
+                        help='Filter URLs to a small set with common redirect parameters (for -e and -l modes)')
     
     return parser.parse_args()
+
+def filter_urls_by_common_redirect_params(urls, verbose=False, silent=False):
+    """Filter URLs to keep only those with common redirect-like parameters."""
+    common_params = ['redirect', 'url', 'goto', 'next', 'dest'] # Add more if needed
+    filtered_urls = []
+    if not urls:
+        return []
+
+    if verbose and not silent:
+        print(f"{Fore.BLUE}[VERBOSE] Starting --small filter. Initial URL count: {len(urls)}{Style.RESET_ALL}")
+        print(f"{Fore.BLUE}[VERBOSE] Common redirect parameters being checked: {', '.join(common_params)}{Style.RESET_ALL}")
+
+    for url_str in urls:
+        try:
+            parsed_url = urlparse(url_str)
+            query_params = parse_qs(parsed_url.query)
+            for param_name in query_params:
+                # Check if the parameter name (without '[]' if it's an array type) is in our common list
+                actual_param_name = param_name.rstrip('[]')
+                if actual_param_name.lower() in common_params:
+                    filtered_urls.append(url_str)
+                    if verbose and not silent:
+                        print(f"{Fore.BLUE}[VERBOSE] --small: Kept URL '{url_str}' due to parameter '{actual_param_name}'{Style.RESET_ALL}")
+                    break # Found a common param, keep URL and move to next URL
+        except Exception as e:
+            if verbose and not silent:
+                print(f"{Fore.YELLOW}[VERBOSE] --small: Error parsing URL '{url_str}': {e}. Skipping.{Style.RESET_ALL}")
+            continue
+    
+    if verbose and not silent:
+        print(f"{Fore.BLUE}[VERBOSE] --small filter finished. Filtered URL count: {len(filtered_urls)}{Style.RESET_ALL}")
+        if filtered_urls:
+            print(f"{Fore.BLUE}[VERBOSE] --small: Sample of filtered URLs (first 5):{Style.RESET_ALL}")
+            for i, f_url in enumerate(filtered_urls[:5]):
+                print(f"{Fore.BLUE}[VERBOSE]   {i+1}: {f_url}{Style.RESET_ALL}")
+            if len(filtered_urls) > 5:
+                print(f"{Fore.BLUE}[VERBOSE]   ... and {len(filtered_urls) - 5} more.{Style.RESET_ALL}")
+        else:
+            print(f"{Fore.YELLOW}[VERBOSE] --small: No URLs matched the common redirect parameter criteria.{Style.RESET_ALL}")
+
+    return filtered_urls
 
 def check_tool_installed(tool_name):
     """Check if a tool is installed and in PATH."""
@@ -101,7 +145,7 @@ def run_command_and_get_output(command_parts, verbose=False):
             print(f"{Fore.RED}[ERROR] Exception running command '{' '.join(command_parts)}': {e}{Style.RESET_ALL}")
         return None
 
-def get_urls_from_external_sources(domain, force_gau=False, force_wayback=False, verbose=False, silent=False):
+def get_urls_from_external_sources(domain, force_gau=False, force_wayback=False, verbose=False, silent=False, apply_small_filter=False):
     """Fetch and process URLs using external tools."""
     urls = []
     temp_urls_file = f"{domain}_temp_external_urls.txt"
@@ -226,6 +270,17 @@ def get_urls_from_external_sources(domain, force_gau=False, force_wayback=False,
         if len(final_urls) > 5:
             print(f"{Fore.BLUE}[VERBOSE]   ... and {len(final_urls) - 5} more.{Style.RESET_ALL}")
     if not silent: print(f"{Fore.CYAN}[INFO] Starting scan with {len(final_urls)} URLs for {domain}.{Style.RESET_ALL}")
+
+    if apply_small_filter:
+        if not silent:
+            print(f"{Fore.CYAN}[INFO] Applying --small filter for domain {domain}...{Style.RESET_ALL}")
+        final_urls = filter_urls_by_common_redirect_params(final_urls, verbose=verbose, silent=silent)
+        if not final_urls:
+            if not silent: print(f"{Fore.YELLOW}[WARNING] --small filter resulted in no URLs for domain {domain}. Skipping scan for this domain.{Style.RESET_ALL}")
+            return [] # Return empty if filter results in no URLs
+        if not silent:
+            print(f"{Fore.GREEN}[INFO] --small filter applied. Proceeding with {len(final_urls)} URLs for {domain}.{Style.RESET_ALL}")
+
     return final_urls
 
 def display_scan_results(results_list, args, domain_name=None):
@@ -348,6 +403,11 @@ def main():
                 sys.exit(1)
             
             list_urls = load_urls_from_file(args.list)
+            if args.small and list_urls:
+                if not args.silent: print(f"{Fore.CYAN}[INFO] Applying --small filter to URL list...{Style.RESET_ALL}")
+                list_urls = filter_urls_by_common_redirect_params(list_urls, verbose=args.verbose, silent=args.silent)
+                if not list_urls and not args.silent:
+                    print(f"{Fore.YELLOW}[WARNING] --small filter resulted in no URLs from the list.{Style.RESET_ALL}")
             if not list_urls:
                 if not args.silent: print(f"{Fore.RED}[ERROR] No valid URLs found in file: {args.list}{Style.RESET_ALL}")
                 sys.exit(1)
@@ -405,11 +465,12 @@ def main():
                     print(f"\n{Fore.BLUE}{'='*20} Processing Domain {i+1}/{total_domains_to_process}: {domain_item} {'='*20}{Style.RESET_ALL}")
                 
                 current_domain_urls = get_urls_from_external_sources(
-                    domain_item,
-                    args.e_gau,
-                    args.e_wayback,
-                    args.verbose,
-                    args.silent # Pass args.silent here
+                    domain_item, 
+                    force_gau=args.e_gau, 
+                    force_wayback=args.e_wayback, 
+                    verbose=args.verbose, 
+                    silent=args.silent,
+                    apply_small_filter=args.small
                 )
 
                 if current_domain_urls:
