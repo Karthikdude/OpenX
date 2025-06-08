@@ -132,26 +132,45 @@ class OpenRedirectScanner:
                     redirect_chain.append(location)
                     final_location = location
                     
-                    # Follow the redirect manually to verify it works
+                    # Follow the entire redirect chain manually to get the final destination
                     try:
-                        # Handle relative URLs
-                        if location.startswith('/'):
-                            redirect_url = f"{parsed.scheme}://{parsed.netloc}{location}"
-                        else:
-                            redirect_url = location
+                        current_location = location
+                        max_redirects = 10  # Prevent infinite redirect loops
+                        redirect_count = 0
+                        
+                        while redirect_count < max_redirects:
+                            # Handle relative URLs
+                            if current_location.startswith('/'):
+                                current_url = f"{parsed.scheme}://{parsed.netloc}{current_location}"
+                            else:
+                                current_url = current_location
                             
-                        # Make a follow-up request to verify the redirect
-                        follow_response = self.make_request(redirect_url, allow_redirects=False)
-                        if follow_response and follow_response.status_code in [200, 301, 302, 303, 307, 308]:
-                            # If this is another redirect, add to chain
-                            if follow_response.status_code in [301, 302, 303, 307, 308]:
-                                next_location = follow_response.headers.get('Location', '')
-                                if next_location:
-                                    redirect_chain.append(next_location)
-                                    final_location = next_location
+                            # Make a follow-up request
+                            follow_response = self.make_request(current_url, allow_redirects=False)
+                            if not follow_response:
+                                break
+                                
+                            # If not a redirect, we've reached the final destination
+                            if follow_response.status_code not in [301, 302, 303, 307, 308]:
+                                final_location = current_location
+                                break
+                                
+                            # Get the next redirect location
+                            next_location = follow_response.headers.get('Location', '')
+                            if not next_location:
+                                break
+                                
+                            # Add to chain and continue following
+                            redirect_chain.append(next_location)
+                            current_location = next_location
+                            final_location = next_location
+                            redirect_count += 1
+                            
+                            if self.config.get('verbose'):
+                                print(f"{Fore.CYAN}[INFO] Following redirect {redirect_count}: {next_location}{Style.RESET_ALL}")
                     except Exception as e:
                         if self.config.get('verbose'):
-                            print(f"{Fore.YELLOW}[WARNING] Error following redirect: {str(e)}{Style.RESET_ALL}")
+                            print(f"{Fore.YELLOW}[WARNING] Error following redirect chain: {str(e)}{Style.RESET_ALL}")
                     
                     # Validate if this is a successful redirect to our payload
                     if validate_redirect(payload, final_location, self.config.get('callback_url')):

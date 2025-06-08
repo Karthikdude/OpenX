@@ -88,7 +88,14 @@ def extract_redirect_params(url):
         return common_redirect_params[:10]
 
 def validate_redirect(payload, redirect_location, callback_url=None):
-    """Validate if a redirect is successful and potentially vulnerable"""
+    """Validate if a redirect is successful and potentially vulnerable
+    
+    A redirect is considered vulnerable if:
+    1. The redirect_location domain exactly matches the payload domain
+    2. The redirect_location contains the payload domain as a subdomain
+    3. The redirect uses a javascript: or data: URI scheme
+    4. If a callback_url is provided, the redirect matches that domain
+    """
     try:
         # Normalize the redirect location
         redirect_location = redirect_location.strip()
@@ -96,6 +103,10 @@ def validate_redirect(payload, redirect_location, callback_url=None):
         # If no redirect location, it's not vulnerable
         if not redirect_location:
             return False
+        
+        # Check for JavaScript/data scheme redirects (these are always vulnerable)
+        if redirect_location.startswith(('javascript:', 'data:', 'vbscript:')):
+            return True
             
         # Extract the payload domain for comparison
         payload_domain = None
@@ -105,6 +116,10 @@ def validate_redirect(payload, redirect_location, callback_url=None):
                 payload_domain = payload_parsed.netloc.lower()
             except:
                 pass
+        
+        # If we couldn't extract a domain from the payload, it's not vulnerable
+        if not payload_domain:
+            return False
         
         # Extract the redirect domain for comparison
         redirect_domain = None
@@ -119,6 +134,10 @@ def validate_redirect(payload, redirect_location, callback_url=None):
             except:
                 pass
         
+        # If we couldn't extract a domain from the redirect, it's not vulnerable
+        if not redirect_domain:
+            return False
+        
         # If callback URL is provided, check for exact domain match
         if callback_url and redirect_domain:
             callback_parsed = urllib.parse.urlparse(callback_url)
@@ -126,33 +145,38 @@ def validate_redirect(payload, redirect_location, callback_url=None):
             return callback_domain == redirect_domain
         
         # Check for exact domain match with payload
-        if payload_domain and redirect_domain and payload_domain == redirect_domain:
+        if payload_domain == redirect_domain:
+            return True
+        
+        # Check if redirect domain ends with the payload domain (subdomain case)
+        if redirect_domain.endswith('.' + payload_domain):
             return True
             
-        # Check for common malicious domains in the actual redirect location
+        # Check if the redirect URL contains the payload domain as a parameter
+        # This is NOT a vulnerability - the domain must be the actual destination
+        # HubSpot and similar services often include the original URL as a parameter
+        
+        # Check for common malicious domains that we're testing with
         vulnerability_indicators = [
             'evil.com', 'attacker.com', 'malicious.com', 'example.com', 'test.com',
-            'localhost', '127.0.0.1', 'xss.rocks', 'hackme.com', 'attacker-site.com'
+            'xss.rocks', 'hackme.com', 'attacker-site.com'
         ]
         
-        # Check for known malicious domains
-        if redirect_domain:
-            for indicator in vulnerability_indicators:
-                if indicator in redirect_domain:
-                    return True
+        # Only consider it vulnerable if the redirect_domain itself matches our test domains
+        for indicator in vulnerability_indicators:
+            if redirect_domain == indicator or redirect_domain.endswith('.' + indicator):
+                return True
         
-        # If the payload contains a domain and that exact domain is in the redirect location
-        if payload_domain and redirect_domain and payload_domain in redirect_domain:
-            return True
+        # If the payload domain is in our list of test domains and the redirect is NOT to
+        # a known safe domain like login pages, then it might be vulnerable
+        if any(payload_domain == indicator or payload_domain.endswith('.' + indicator) 
+               for indicator in vulnerability_indicators):
             
-        # Check if the redirect is to an external domain (any external domain could be vulnerable)
-        # This helps catch redirects to domains not in our vulnerability_indicators list
-        if payload_domain and redirect_domain and redirect_domain != 'localhost' and '127.0.0.1' not in redirect_domain:
-            # If we have a payload domain and it matches the redirect domain, it's likely vulnerable
-            return True
-            
-        # JavaScript scheme redirects are vulnerable
-        if redirect_location.startswith(('javascript:', 'data:', 'vbscript:')):
+            # Check against known safe domains that are not vulnerable
+            safe_domains = ['hubspot.com', 'app.hubspot.com', 'login', 'auth', 'sso']
+            if any(safe in redirect_domain for safe in safe_domains):
+                return False
+                
             return True
         
         return False
