@@ -4,7 +4,7 @@ Helper functions for URL validation, parsing, and other utilities
 """
 
 import re
-import urllib.parse
+from urllib.parse import urlparse, parse_qs, quote, urlunparse
 from colorama import Fore, Back, Style
 
 def display_banner():
@@ -27,7 +27,7 @@ def display_banner():
 def validate_url(url):
     """Validate URL format"""
     try:
-        result = urllib.parse.urlparse(url)
+        result = urlparse(url)
         return all([result.scheme, result.netloc])
     except:
         return False
@@ -70,8 +70,8 @@ def extract_redirect_params(url):
     ]
     
     try:
-        parsed = urllib.parse.urlparse(url)
-        query_params = urllib.parse.parse_qs(parsed.query)
+        parsed = urlparse(url)
+        query_params = parse_qs(parsed.query)
         
         # Find parameters that might be used for redirection
         potential_params = []
@@ -112,7 +112,7 @@ def validate_redirect(payload, redirect_location, callback_url=None):
         payload_domain = None
         if '://' in payload:
             try:
-                payload_parsed = urllib.parse.urlparse(payload)
+                payload_parsed = urlparse(payload)
                 payload_domain = payload_parsed.netloc.lower()
             except:
                 pass
@@ -129,7 +129,7 @@ def validate_redirect(payload, redirect_location, callback_url=None):
                 if redirect_location.startswith('//'):
                     redirect_location = 'http:' + redirect_location
                     
-                redirect_parsed = urllib.parse.urlparse(redirect_location)
+                redirect_parsed = urlparse(redirect_location)
                 redirect_domain = redirect_parsed.netloc.lower()
             except:
                 pass
@@ -140,7 +140,7 @@ def validate_redirect(payload, redirect_location, callback_url=None):
         
         # If callback URL is provided, check for exact domain match
         if callback_url and redirect_domain:
-            callback_parsed = urllib.parse.urlparse(callback_url)
+            callback_parsed = urlparse(callback_url)
             callback_domain = callback_parsed.netloc.lower()
             return callback_domain == redirect_domain
         
@@ -188,7 +188,7 @@ def validate_redirect(payload, redirect_location, callback_url=None):
 def extract_domain(url):
     """Extract domain from URL"""
     try:
-        parsed = urllib.parse.urlparse(url)
+        parsed = urlparse(url)
         return parsed.netloc
     except:
         return None
@@ -206,8 +206,8 @@ def clean_url(url):
     """Clean and normalize URL"""
     try:
         # Remove fragments and normalize
-        parsed = urllib.parse.urlparse(url)
-        cleaned = urllib.parse.urlunparse((
+        parsed = urlparse(url)
+        cleaned = urlunparse((
             parsed.scheme, parsed.netloc, parsed.path,
             parsed.params, parsed.query, ''
         ))
@@ -219,9 +219,9 @@ def encode_payload(payload, encoding_type='url'):
     """Encode payload based on encoding type"""
     try:
         if encoding_type == 'url':
-            return urllib.parse.quote(payload)
+            return quote(payload)
         elif encoding_type == 'double_url':
-            return urllib.parse.quote(urllib.parse.quote(payload))
+            return quote(quote(payload))
         elif encoding_type == 'html':
             return payload.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
         else:

@@ -7,11 +7,12 @@ import requests
 import threading
 import time
 import random
-import urllib.parse
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, urljoin
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from colorama import Fore, Style
+
 
 from .payloads import PayloadManager
 from .utils import normalize_url, extract_redirect_params, validate_redirect
@@ -102,15 +103,15 @@ class OpenRedirectScanner:
         """Test a URL parameter with a specific payload"""
         try:
             # Parse URL and add/modify parameter
-            parsed = urllib.parse.urlparse(url)
-            query_params = urllib.parse.parse_qs(parsed.query)
+            parsed = urlparse(url)
+            query_params = parse_qs(parsed.query)
             
             # Set the parameter with the payload
             query_params[param] = [payload]
             
             # Reconstruct URL
-            new_query = urllib.parse.urlencode(query_params, doseq=True)
-            test_url = urllib.parse.urlunparse((
+            new_query = urlencode(query_params, doseq=True)
+            test_url = urlunparse((
                 parsed.scheme, parsed.netloc, parsed.path,
                 parsed.params, new_query, parsed.fragment
             ))
@@ -120,72 +121,82 @@ class OpenRedirectScanner:
             if not response:
                 return None
             
-            # Store redirect chain for verification
             redirect_chain = []
             final_location = None
-            
-            # Check for redirect response
+            # Store headers of the response that issues the confirmed malicious redirect
+            headers_of_redirecting_response = response.headers 
+
             if response.status_code in [301, 302, 303, 307, 308]:
-                location = response.headers.get('Location', '')
-                if location:
-                    # Add to redirect chain
-                    redirect_chain.append(location)
-                    final_location = location
-                    
-                    # Follow the entire redirect chain manually to get the final destination
+                first_location_header = response.headers.get('Location', '')
+                if first_location_header:
+                    redirect_chain.append(first_location_header)
+                    current_location_to_follow = first_location_header
+                    final_location = first_location_header # Initialize with first redirect
+                    headers_of_redirecting_response = response.headers # Default to first response
+
                     try:
-                        current_location = location
-                        max_redirects = 10  # Prevent infinite redirect loops
+                        max_redirects = self.config.get('follow_redirects', 5)
                         redirect_count = 0
                         
+                        # Base URL for resolving relative redirects, using the test_url (URL with payload)
+                        # as it's the one making the requests in this context.
+                        base_for_relative_redirects = test_url
+
                         while redirect_count < max_redirects:
-                            # Handle relative URLs
-                            if current_location.startswith('/'):
-                                current_url = f"{parsed.scheme}://{parsed.netloc}{current_location}"
-                            else:
-                                current_url = current_location
+                            # Resolve relative URLs against the last known absolute URL in the chain or test_url
+                            absolute_url_to_follow = urljoin(base_for_relative_redirects, current_location_to_follow)
                             
-                            # Make a follow-up request
-                            follow_response = self.make_request(current_url, allow_redirects=False)
+                            if self.config.get('verbose'):
+                                print(f"{Fore.CYAN}[DEBUG SCANNER] Following redirect from {base_for_relative_redirects} to {current_location_to_follow} (resolved: {absolute_url_to_follow}){Style.RESET_ALL}")
+
+                            follow_response = self.make_request(absolute_url_to_follow, allow_redirects=False)
                             if not follow_response:
-                                break
+                                break 
                                 
-                            # If not a redirect, we've reached the final destination
                             if follow_response.status_code not in [301, 302, 303, 307, 308]:
-                                final_location = current_location
+                                final_location = absolute_url_to_follow # This is where we landed
+                                # headers_of_redirecting_response remains from the *previous* redirecting response
                                 break
                                 
-                            # Get the next redirect location
-                            next_location = follow_response.headers.get('Location', '')
-                            if not next_location:
+                            next_location_header = follow_response.headers.get('Location', '')
+                            if not next_location_header:
+                                final_location = absolute_url_to_follow # No more Location, so this is it
                                 break
                                 
-                            # Add to chain and continue following
-                            redirect_chain.append(next_location)
-                            current_location = next_location
-                            final_location = next_location
+                            redirect_chain.append(next_location_header)
+                            current_location_to_follow = next_location_header
+                            final_location = next_location_header # Update final_location at each step
+                            headers_of_redirecting_response = follow_response.headers # This response issued the (potential) next redirect
+                            base_for_relative_redirects = absolute_url_to_follow # Update base for next relative resolution
                             redirect_count += 1
                             
                             if self.config.get('verbose'):
-                                print(f"{Fore.CYAN}[INFO] Following redirect {redirect_count}: {next_location}{Style.RESET_ALL}")
+                                print(f"{Fore.CYAN}[INFO] Redirect {redirect_count}/{max_redirects}: {next_location_header}{Style.RESET_ALL}")
+                        else: # Max redirects reached
+                            if self.config.get('verbose'):
+                                 print(f"{Fore.YELLOW}[WARNING] Max redirects ({max_redirects}) reached for {test_url}. Final location in chain: {final_location}{Style.RESET_ALL}")
+                    
                     except Exception as e:
                         if self.config.get('verbose'):
-                            print(f"{Fore.YELLOW}[WARNING] Error following redirect chain: {str(e)}{Style.RESET_ALL}")
+                            print(f"{Fore.YELLOW}[WARNING] Error following redirect chain for {test_url}: {str(e)}{Style.RESET_ALL}")
                     
-                    # Validate if this is a successful redirect to our payload
-                    if validate_redirect(payload, final_location, self.config.get('callback_url')):
-                        return {
+                    if final_location and self._is_external_redirect(url, final_location, payload):
+                        result = {
                             'vulnerable': True,
                             'url': test_url,
                             'original_url': url,
                             'parameter': param,
                             'payload': payload,
                             'method': 'URL Parameter',
-                            'status_code': response.status_code,
-                            'redirect_location': final_location,
+                            'status_code': response.status_code, # Initial redirect status
+                            'redirects_to': final_location,
+                            'response_location_header': first_location_header, # From the first 3xx response
                             'redirect_chain': redirect_chain,
                             'severity': self._determine_severity(payload, final_location)
                         }
+                        if self.config.get('show_response_headers'):
+                            result['vulnerable_response_headers'] = dict(headers_of_redirecting_response)
+                        return result
             
             # Check for meta refresh redirects
             if response.status_code == 200:
@@ -640,33 +651,38 @@ class OpenRedirectScanner:
                 return True
             
             # Check for JavaScript/data URI schemes
-            if location.startswith(('javascript:', 'data:')):
-                return True
-        
-        return False
-    
-    def _is_external_redirect(self, original_url, redirect_location):
-        """Check if redirect is to an external domain"""
+
+    def _is_external_redirect(self, original_url_str, final_redirect_location_str, payload_value_str):
+        """Check if redirect is to an external domain, considering the payload."""
         try:
-            from urllib.parse import urlparse
-            
-            original_domain = urlparse(original_url).netloc
-            redirect_domain = urlparse(redirect_location).netloc
-            
-            # Consider it external if domains are different
-            if redirect_domain and redirect_domain != original_domain:
+            original_domain = urlparse(original_url_str).netloc.lower()
+            redirect_domain = urlparse(final_redirect_location_str).netloc.lower()
+            payload_domain = urlparse(payload_value_str).netloc.lower()
+
+            if not redirect_domain:
+                if self.config.get('verbose'):
+                    print(f"{Fore.CYAN}[DEBUG SCANNER] Not external: Redirect location has no domain. Original: {original_domain}, Final Dest: {final_redirect_location_str}, Payload: {payload_domain}{Style.RESET_ALL}")
+                return False
+
+            if original_domain == redirect_domain:
+                if self.config.get('verbose'):
+                    print(f"{Fore.CYAN}[DEBUG SCANNER] Not external: Redirect to same domain. Original: {original_domain}, Final Dest: {redirect_domain}, Payload: {payload_domain}{Style.RESET_ALL}")
+                return False
+
+            if payload_domain and redirect_domain == payload_domain:
+                if self.config.get('verbose'):
+                    print(f"{Fore.GREEN}[DEBUG SCANNER] External redirect CONFIRMED: Original: {original_domain}, Redirected to: {redirect_domain} (Matches payload domain: {payload_domain}){Style.RESET_ALL}")
                 return True
             
-            # Check for suspicious domains
-            suspicious_domains = ['evil.com', 'attacker.com', 'malicious.com']
-            if any(domain in redirect_location.lower() for domain in suspicious_domains):
-                return True
-                
-        except Exception:
-            pass
-        
-        return False
-    
+            if self.config.get('verbose'):
+                print(f"{Fore.YELLOW}[DEBUG SCANNER] Not external: Redirect domain ({redirect_domain}) differs from original ({original_domain}) but does NOT match payload domain ({payload_domain}). Final Dest: {final_redirect_location_str}{Style.RESET_ALL}")
+            return False
+            
+        except Exception as e:
+            if self.config.get('verbose'):
+                print(f"{Fore.RED}[DEBUG SCANNER ERROR] Exception in _is_external_redirect: {e}. Original: {original_url_str}, Location: {final_redirect_location_str}, Payload: {payload_value_str}{Style.RESET_ALL}")
+            return False
+
     def _determine_severity(self, payload, redirect_location):
         """Determine vulnerability severity based on payload and redirect location"""
         if any(domain in redirect_location.lower() for domain in ['evil.com', 'attacker.com', 'malicious.com']):

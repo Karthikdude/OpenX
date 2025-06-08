@@ -70,6 +70,10 @@ Examples:
     parser.add_argument('-s', '--small', action='store_true',
                         help='Filter URLs to a small set with common redirect parameters (for -e and -l modes)')
     
+    # Add new argument for response headers
+    parser.add_argument('-r', '--response', action='store_true',
+                        help='Display response headers for found vulnerabilities')
+    
     return parser.parse_args()
 
 def filter_urls_by_common_redirect_params(urls, verbose=False, silent=False):
@@ -356,6 +360,16 @@ def display_scan_results(results_list, args, domain_name=None):
                 
             if 'redirect_chain' in result and result['redirect_chain']:
                 if not args.silent: print(f"    {Fore.YELLOW}Redirect Chain: {' -> '.join(result['redirect_chain'])}{Style.RESET_ALL}")
+
+            # Display response headers if -r and -v flags are used
+            if args.response and args.verbose:
+                if 'response_location_header' in result and result['response_location_header']:
+                    if not args.silent: print(f"    {Fore.MAGENTA}Initial Redirect Location Header: {result['response_location_header']}{Style.RESET_ALL}")
+                
+                if 'vulnerable_response_headers' in result and result['vulnerable_response_headers']:
+                    if not args.silent: print(f"    {Fore.MAGENTA}Headers of Redirecting Response:{Style.RESET_ALL}")
+                    for h_name, h_value in result['vulnerable_response_headers'].items():
+                        if not args.silent: print(f"      {Fore.CYAN}{h_name}: {h_value}{Style.RESET_ALL}")
         
         if not args.silent: print(f"\n{Fore.GREEN}✅ Scan completed for {domain_name or 'target(s)'} - {len(vulnerable_results)} vulnerabilities found{Style.RESET_ALL}")
     else:
@@ -427,7 +441,8 @@ def main():
             'custom_payloads': args.payloads,
             'verbose': args.verbose,
             'status_codes': args.status_codes,
-            'fast': args.fast
+            'fast': args.fast,
+            'show_response_headers': args.response
         }
         scanner = OpenRedirectScanner(scanner_config)
 
