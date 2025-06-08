@@ -456,7 +456,7 @@ class OpenRedirectScanner:
                 cookies = {cookie_name: payload}
                 response = None
                 try:
-                    response = self.make_request(url, headers=self.headers, cookies=cookies, allow_redirects=False)
+                    response = self.make_request(url, cookies=cookies, allow_redirects=False)
                     
                     if not response:
                         continue
