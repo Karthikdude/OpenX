@@ -57,7 +57,7 @@ class OpenRedirectScanner:
         """Get total number of requests made"""
         return self.total_requests
     
-    def make_request(self, url, method='GET', headers=None, allow_redirects=True):
+    def make_request(self, url, method='GET', headers=None, cookies=None, allow_redirects=True):
         """Make HTTP request with error handling"""
         try:
             with self.results_lock:
@@ -81,7 +81,8 @@ class OpenRedirectScanner:
                 url=url,
                 headers=request_headers,
                 timeout=self.timeout,
-                allow_redirects=allow_redirects
+                allow_redirects=allow_redirects,
+                cookies=cookies
             )
             
             return response
