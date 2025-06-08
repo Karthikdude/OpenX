@@ -27,7 +27,6 @@ def parse_arguments():
     parser = argparse.ArgumentParser(
         prog='openx.py',
         description="OpenX - Advanced Open Redirect Vulnerability Scanner",
-        description="OpenX - Advanced Open Redirect Vulnerability Scanner",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
