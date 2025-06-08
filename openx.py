@@ -494,7 +494,11 @@ def main():
                     if args.verbose:
                         print(f"{Fore.CYAN}[DEBUG] Scanner Config for {domain_item}: {scanner_config}{Style.RESET_ALL}")
                     
-                    domain_results = scanner.scan_urls(current_domain_urls)
+                    domain_results = []
+                    for url_to_scan_external in current_domain_urls:
+                        single_url_results_external = scanner.scan_single_url(url_to_scan_external)
+                        if single_url_results_external:
+                            domain_results.extend(single_url_results_external)
                     # display_scan_results handles its own silent logic via args
                     if not args.silent: display_scan_results(domain_results, args, domain_name=domain_item)
                     if domain_results:
@@ -515,7 +519,11 @@ def main():
             if args.verbose:
                 print(f"{Fore.CYAN}[DEBUG] Scanner Config: {scanner_config}{Style.RESET_ALL}")
             
-            results = scanner.scan_urls(target_urls)
+            results = []
+            for url_to_scan_direct in target_urls:
+                single_url_results_direct = scanner.scan_single_url(url_to_scan_direct)
+                if single_url_results_direct:
+                    results.extend(single_url_results_direct)
             # display_scan_results handles its own silent logic via args
             if not args.silent: display_scan_results(results, args)
             if results:

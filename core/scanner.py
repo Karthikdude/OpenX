@@ -183,16 +183,16 @@ class OpenRedirectScanner:
                     if final_location and self._is_external_redirect(url, final_location, payload):
                         result = {
                             'vulnerable': True,
-                            'url': test_url,
-                            'original_url': url,
+                            'url': test_url,                     # The URL tested (with payload)
+                            'original_url': url,                 # The original URL before payload injection
                             'parameter': param,
                             'payload': payload,
                             'method': 'URL Parameter',
-                            'status_code': response.status_code, # Initial redirect status
-                            'redirects_to': final_location,
-                            'response_location_header': first_location_header, # From the first 3xx response
-                            'redirect_chain': redirect_chain,
-                            'severity': self._determine_severity(payload, final_location)
+                            'status_code': response.status_code, # Status code of the *first* redirecting response
+                            'first_location_header': first_location_header, # Location header from the *first* redirecting response
+                            'final_location': final_location,    # The ultimate destination URL after all redirects
+                            'redirect_chain': redirect_chain,    # List of all Location headers encountered
+                            'response_headers': dict(headers_of_redirecting_response) if headers_of_redirecting_response else None # Headers of the response that *issued the last redirect* in the chain (or the first if no chain)
                         }
                         if self.config.get('show_response_headers'):
                             result['vulnerable_response_headers'] = dict(headers_of_redirecting_response)
@@ -309,26 +309,33 @@ class OpenRedirectScanner:
             # Check if the server redirects based on the header
             if response.status_code in [301, 302, 303, 307, 308]:
                 location = response.headers.get('Location', '')
-                if location and validate_redirect(payload, location, self.config.get('callback_url')):
+                # Validate redirect: original_url, final_location, payload_value, callback_url
+                if location and validate_redirect(url, location, payload, self.config.get('callback_url')):
                     return {
                         'vulnerable': True,
-                        'url': url,
-                        'header': header_name,
+                        'original_url': url,
+                        'url': url, # For header tests, the tested URL is the original URL
+                        'header_name': header_name,
                         'payload': payload,
                         'method': 'Header Injection',
                         'status_code': response.status_code,
-                        'redirect_location': location,
-                        'severity': self._determine_severity(payload, location)
+                        'final_location': location,
+                        'response_headers': dict(response.headers) if response.headers else None
+                        # Severity to be determined by the caller
                     }
             
+            # If not vulnerable or no redirect, return non-vulnerable result
             return {
                 'vulnerable': False,
+                'original_url': url,
                 'url': url,
-                'header': header_name,
+                'header_name': header_name,
                 'payload': payload,
-                'status_code': response.status_code
+                'status_code': response.status_code,
+                'final_location': response.headers.get('Location'), # Include if present
+                'response_headers': dict(response.headers) if response.headers else None
             }
-            
+        
         except Exception as e:
             if self.config.get('verbose'):
                 print(f"{Fore.YELLOW}[WARNING] Error testing header {header_name} on {url}: {str(e)}{Style.RESET_ALL}")
@@ -352,225 +359,163 @@ class OpenRedirectScanner:
             form_params = ['redirect_to', 'next', 'return', 'success_url', 'failure_url']
             # In fast mode, use fewer payloads
             if self.config.get('fast'):
-                test_payloads = ['http://evil.com', '//evil.com']
+                test_payloads = ['http://evil.com', '//evil.com'] # Example payloads
             else:
-                test_payloads = ['http://evil.com', '//evil.com', 'javascript:alert(1)']
+                # Consider expanding these payloads or loading from a configurable list
+                test_payloads = ['http://evil.com', '//evil.com', 'javascript:alert(1)'] 
+        
         except Exception as e:
             if self.config.get('verbose'):
-                print(f"{Fore.YELLOW}[WARNING] Error checking for forms on {url}: {str(e)}{Style.RESET_ALL}")
-            return results
-            
-            for param in form_params:
-                for payload in test_payloads:
-                    form_data = {param: payload}
-                    
-                    # Test POST request
-                    try:
-                        post_response = self.session.post(
-                            url, 
-                            data=form_data, 
-                            allow_redirects=False, 
-                            timeout=self.timeout
-                        )
-                    except Exception as e:
-                        if self.config.get('verbose'):
-                            print(f"{Fore.YELLOW}[WARNING] Error testing form POST on {url}: {str(e)}{Style.RESET_ALL}")
-                        continue
-                        
-                        with self.results_lock:
-                            self.total_requests += 1
-                        
-                        if post_response.status_code in [301, 302, 303, 307, 308]:
-                            location = post_response.headers.get('Location', '')
-                            if location:
-                                # Store redirect chain for verification
-                                redirect_chain = [location]
-                                final_location = location
-                                
-                                # Follow the redirect manually to verify it works
-                                try:
-                                    # Handle relative URLs
-                                    parsed = urllib.parse.urlparse(url)
-                                    if location.startswith('/'):
-                                        redirect_url = f"{parsed.scheme}://{parsed.netloc}{location}"
-                                    else:
-                                        redirect_url = location
-                                        
-                                    # Make a follow-up request to verify the redirect
-                                    follow_response = self.make_request(redirect_url, allow_redirects=False)
-                                    if follow_response and follow_response.status_code in [200, 301, 302, 303, 307, 308]:
-                                        # If this is another redirect, add to chain
-                                        if follow_response.status_code in [301, 302, 303, 307, 308]:
-                                            next_location = follow_response.headers.get('Location', '')
-                                            if next_location:
-                                                redirect_chain.append(next_location)
-                                                final_location = next_location
-                                except Exception as e:
+                print(f"{Fore.YELLOW}[WARNING] Error during initial check for forms on {url}: {str(e)}{Style.RESET_ALL}")
+            return results # Return if initial check fails or error occurs
+
+        # If initial check passed, proceed to test form parameters
+        for param in form_params:
+            for payload in test_payloads:
+                form_data = {param: payload}
+                post_response = None # Initialize post_response
+                try:
+                    with self.results_lock:
+                        self.total_requests += 1 # Increment for the POST request attempt
+                    post_response = self.session.post(
+                        url,
+                        data=form_data,
+                        allow_redirects=False,
+                        timeout=self.timeout,
+                        headers=self.headers # Use consistent headers
+                    )
+                except requests.exceptions.Timeout:
+                    if self.config.get('verbose'):
+                        print(f"{Fore.YELLOW}[WARNING] Timeout testing form POST on {url} with param '{param}' and payload '{payload}'{Style.RESET_ALL}")
+                    continue # To next payload/param
+                except requests.exceptions.RequestException as e:
+                    if self.config.get('verbose'):
+                        print(f"{Fore.YELLOW}[WARNING] Error testing form POST on {url} with param '{param}': {str(e)}{Style.RESET_ALL}")
+                    continue # To next payload/param
+
+                if post_response and post_response.status_code in [301, 302, 303, 307, 308]:
+                    location_header = post_response.headers.get('Location', '')
+                    if location_header:
+                        redirect_chain = [location_header]
+                        final_location = location_header
+                        current_base_url_for_redirect = url 
+
+                        try:
+                            resolved_follow_url = urljoin(current_base_url_for_redirect, location_header)
+                            if self.config.get('verbose'):
+                                print(f"{Fore.CYAN}[DEBUG SCANNER] Form POST to {url} with {param}={payload} redirected to {location_header}. Attempting to follow to {resolved_follow_url}{Style.RESET_ALL}")
+                            
+                            follow_response = self.make_request(resolved_follow_url, allow_redirects=False)
+
+                            if follow_response and follow_response.status_code in [301, 302, 303, 307, 308]:
+                                next_location_header = follow_response.headers.get('Location', '')
+                                if next_location_header:
+                                    redirect_chain.append(next_location_header)
+                                    final_location = next_location_header 
                                     if self.config.get('verbose'):
-                                        print(f"{Fore.YELLOW}[WARNING] Error following form redirect: {str(e)}{Style.RESET_ALL}")
-                                
-                                # Validate if this is a successful redirect to our payload
-                                if validate_redirect(payload, final_location, self.config.get('callback_url')):
-                                    results.append({
-                                        'vulnerable': True,
-                                        'url': url,
-                                        'parameter': param,
-                                        'payload': payload,
-                                        'method': 'Form POST Redirect',
-                                        'status_code': post_response.status_code,
-                                        'redirect_location': final_location,
-                                        'redirect_chain': redirect_chain,
-                                        'severity': self._determine_severity(payload, final_location)
-                                    })
-                                    
-                                    if self.config.get('verbose'):
-                                        print(f"{Fore.RED}[VULNERABLE] {url} - Form Parameter: {param}, Payload: {payload}{Style.RESET_ALL}")
-                                    
-                                    # In fast mode, return immediately after first vulnerability
-                                    if self.config.get('fast'):
-                                        return results
+                                        print(f"{Fore.CYAN}[DEBUG SCANNER] Form redirect followed to: {final_location}{Style.RESET_ALL}")
+
+                        except Exception as e:
+                            if self.config.get('verbose'):
+                                print(f"{Fore.YELLOW}[WARNING] Error while trying to follow form redirect from {location_header} for {url}: {str(e)}{Style.RESET_ALL}")
+                        
+                        if validate_redirect(url, final_location, payload, self.config.get('callback_url')):
+                            results.append({
+                                'vulnerable': True,
+                                'original_url': url,
+                                'url': url, 
+                                'parameter': param, 
+                                'payload': payload,
+                                'method': 'Form POST Redirect',
+                                'status_code': post_response.status_code, 
+                                'final_location': final_location,
+                                'redirect_chain': redirect_chain,
+                                'response_headers': dict(post_response.headers) if post_response.headers else None
+                            })
+                            if self.config.get('verbose'):
+                                print(f"{Fore.RED}[VULNERABLE] {url} - Form Parameter: {param}, Payload: {payload}, Redirects to: {final_location}{Style.RESET_ALL}")
+                            if self.config.get('fast'):
+                                return results 
         return results
-    
+
     def test_cookie_redirects(self, url):
         """Test cookie-based redirect vulnerabilities"""
         results = []
-        
-        try:
-            # Common cookie names used for redirects
-            cookie_names = [
-                'redirect_url', 'redirect_uri', 'return_url', 'return_to', 'next_url',
-                'next', 'url', 'redirect', 'return', 'target', 'goto', 'location'
-            ]
-            
-            # Get payloads
-            payloads = self.payload_manager.get_payloads()
-            
-            # Test each cookie with each payload
-            for cookie_name in cookie_names:
-                for payload in payloads[:3]:  # Limit to first 3 payloads for efficiency
-                    # Create cookie with payload
-                    cookies = {cookie_name: payload}
+        cookie_names = [
+            'redirect_url', 'redirect_uri', 'return_url', 'return_to', 'next_url',
+            'next', 'url_redirect', 'redirect', 'return', 'target', 'goto', 'location_cookie',
+            'dest', 'destination', 'redir_url', 'callback_url', 'redirect_after_login'
+        ]
+        if self.config.get('fast'):
+            test_payloads = ['http://evil.com', '//evil.com']
+        else:
+            test_payloads = ['http://evil.com', '//evil.com', 'javascript:alert(1)']
+
+        for cookie_name in cookie_names:
+            for payload in test_payloads:
+                cookies = {cookie_name: payload}
+                response = None
+                try:
+                    response = self.make_request(url, headers=self.headers, cookies=cookies, allow_redirects=False)
                     
-                    # Make request with cookie
-                    response = self.make_request(url, headers={'Cookie': f"{cookie_name}={payload}"}, allow_redirects=False)
                     if not response:
                         continue
-                    
-                    # Store redirect chain for verification
-                    redirect_chain = []
-                    final_location = None
-                    
-                    # Check for redirect response
+
                     if response.status_code in [301, 302, 303, 307, 308]:
-                        location = response.headers.get('Location', '')
-                        if location:
-                            # Add to redirect chain
-                            redirect_chain.append(location)
-                            final_location = location
-                            
-                            # Follow the redirect manually to verify it works
+                        location_header = response.headers.get('Location', '')
+                        if location_header:
+                            redirect_chain = [location_header]
+                            final_location = location_header
+                            current_base_url_for_redirect = url
+
                             try:
-                                # Handle relative URLs
-                                parsed = urllib.parse.urlparse(url)
-                                if location.startswith('/'):
-                                    redirect_url = f"{parsed.scheme}://{parsed.netloc}{location}"
-                                else:
-                                    redirect_url = location
-                                    
-                                # Make a follow-up request to verify the redirect
-                                follow_response = self.make_request(redirect_url, allow_redirects=False)
-                                if follow_response and follow_response.status_code in [200, 301, 302, 303, 307, 308]:
-                                    # If this is another redirect, add to chain
-                                    if follow_response.status_code in [301, 302, 303, 307, 308]:
-                                        next_location = follow_response.headers.get('Location', '')
-                                        if next_location:
-                                            redirect_chain.append(next_location)
-                                            final_location = next_location
-                            except Exception as e:
+                                resolved_follow_url = urljoin(current_base_url_for_redirect, location_header)
                                 if self.config.get('verbose'):
-                                    print(f"{Fore.YELLOW}[WARNING] Error following cookie redirect: {str(e)}{Style.RESET_ALL}")
+                                    print(f"{Fore.CYAN}[DEBUG SCANNER] Cookie '{cookie_name}' payload '{payload}' for {url} redirected to {location_header}. Following to {resolved_follow_url}{Style.RESET_ALL}")
+                                
+                                follow_response = self.make_request(resolved_follow_url, allow_redirects=False)
+
+                                if follow_response and follow_response.status_code in [301, 302, 303, 307, 308]:
+                                    next_location_header = follow_response.headers.get('Location', '')
+                                    if next_location_header:
+                                        redirect_chain.append(next_location_header)
+                                        final_location = next_location_header
+                                        if self.config.get('verbose'):
+                                            print(f"{Fore.CYAN}[DEBUG SCANNER] Cookie redirect for '{cookie_name}' followed to: {final_location}{Style.RESET_ALL}")
                             
-                            # Validate if this is a successful redirect to our payload
-                            if validate_redirect(payload, final_location, self.config.get('callback_url')):
-                                result = {
-                                    'vulnerable': True,
-                                    'url': url,
-                                    'original_url': url,
-                                    'cookie': cookie_name,
-                                    'payload': payload,
-                                    'method': 'Cookie-based Redirect',
-                                    'status_code': response.status_code,
-                                    'redirect_location': final_location,
-                                    'redirect_chain': redirect_chain,
-                                    'severity': self._determine_severity(payload, final_location)
-                                }
-                                results.append(result)
-                                
+                            except Exception as e_follow:
                                 if self.config.get('verbose'):
-                                    print(f"{Fore.RED}[VULNERABLE] {url} - Cookie: {cookie_name}, Payload: {payload}{Style.RESET_ALL}")
-                                
-                                # If in fast mode, return after first vulnerability
+                                    print(f"{Fore.YELLOW}[WARNING] Error following cookie redirect from {location_header} for {url} (cookie: {cookie_name}): {str(e_follow)}{Style.RESET_ALL}")
+
+                            if validate_redirect(url, final_location, payload, self.config.get('callback_url')):
+                                results.append({
+                                    'vulnerable': True,
+                                    'original_url': url,
+                                    'url': url,
+                                    'cookie_name': cookie_name,
+                                    'payload': payload,
+                                    'method': 'Cookie Redirect',
+                                    'status_code': response.status_code,
+                                    'final_location': final_location,
+                                    'redirect_chain': redirect_chain,
+                                    'response_headers': dict(response.headers) if response.headers else None
+                                })
+                                if self.config.get('verbose'):
+                                    print(f"{Fore.RED}[VULNERABLE] {url} - Cookie: {cookie_name}, Payload: {payload}, Redirects to: {final_location}{Style.RESET_ALL}")
                                 if self.config.get('fast'):
-                                    print(f"{Fore.YELLOW}[FAST MODE] Found vulnerability on cookie '{cookie_name}', moving to next parameter{Style.RESET_ALL}")
-                                    break
-                    
-                    # Check for meta refresh or JavaScript redirects in response content
-                    elif response.status_code == 200:
-                        content = response.text.lower()
-                        
-                        # Check for meta refresh
-                        if 'http-equiv="refresh"' in content or 'meta http-equiv="refresh"' in content:
-                            import re
-                            meta_pattern = r'content=["\']?\d+;\s*url=([^"\'>\s]+)'
-                            match = re.search(meta_pattern, content, re.IGNORECASE)
-                            if match:
-                                redirect_url = match.group(1)
-                                redirect_chain.append(redirect_url)
-                                
-                                # Try to follow this redirect to verify
-                                try:
-                                    # Handle relative URLs
-                                    parsed = urllib.parse.urlparse(url)
-                                    if redirect_url.startswith('/'):
-                                        full_redirect_url = f"{parsed.scheme}://{parsed.netloc}{redirect_url}"
-                                    else:
-                                        full_redirect_url = redirect_url
-                                        
-                                    follow_response = self.make_request(full_redirect_url, allow_redirects=False)
-                                    if follow_response and follow_response.status_code == 200:
-                                        # Successfully followed the redirect
-                                        if validate_redirect(payload, redirect_url, self.config.get('callback_url')):
-                                            result = {
-                                                'vulnerable': True,
-                                                'url': url,
-                                                'original_url': url,
-                                                'cookie': cookie_name,
-                                                'payload': payload,
-                                                'method': 'Cookie-based Meta Refresh',
-                                                'status_code': response.status_code,
-                                                'redirect_location': redirect_url,
-                                                'redirect_chain': redirect_chain,
-                                                'severity': self._determine_severity(payload, redirect_url)
-                                            }
-                                            results.append(result)
-                                            
-                                            if self.config.get('verbose'):
-                                                print(f"{Fore.RED}[VULNERABLE] {url} - Cookie: {cookie_name}, Payload: {payload} (Meta Refresh){Style.RESET_ALL}")
-                                            
-                                            # If in fast mode, return after first vulnerability
-                                            if self.config.get('fast'):
-                                                break
-                                except Exception as e:
-                                    if self.config.get('verbose'):
-                                        print(f"{Fore.YELLOW}[WARNING] Error following meta refresh: {str(e)}{Style.RESET_ALL}")
-            
-            return results
-            
-        except Exception as e:
-            if self.config.get('verbose'):
-                print(f"{Fore.YELLOW}[WARNING] Error testing cookie redirects for {url}: {str(e)}{Style.RESET_ALL}")
-            return results
-    
+                                    return results
+                
+                except requests.exceptions.Timeout:
+                    if self.config.get('verbose'):
+                        print(f"{Fore.YELLOW}[WARNING] Timeout testing cookie '{cookie_name}' on {url} with payload '{payload}'{Style.RESET_ALL}")
+                except requests.exceptions.RequestException as e_req:
+                    if self.config.get('verbose'):
+                        print(f"{Fore.YELLOW}[WARNING] Request error testing cookie '{cookie_name}' on {url}: {str(e_req)}{Style.RESET_ALL}")
+                except Exception as e_gen:
+                    if self.config.get('verbose'):
+                         print(f"{Fore.YELLOW}[WARNING] General error testing cookie '{cookie_name}' on {url} with payload '{payload}': {str(e_gen)}{Style.RESET_ALL}")
+        return results
+
     def _test_url_parameters_smart(self, url, smart_payloads, url_analysis):
         """Test URL parameters with intelligent payload selection"""
         results = []
@@ -655,19 +600,51 @@ class OpenRedirectScanner:
     def _is_external_redirect(self, original_url_str, final_redirect_location_str, payload_value_str):
         """Check if redirect is to an external domain, considering the payload."""
         try:
-            original_domain = urlparse(original_url_str).netloc.lower()
-            redirect_domain = urlparse(final_redirect_location_str).netloc.lower()
-            payload_domain = urlparse(payload_value_str).netloc.lower()
+            def get_normalized_hostname(url_str):
+                parsed_url = urlparse(url_str)
+                hostname = parsed_url.hostname
+                if not hostname: # Handles cases like 'javascript:' or 'data:' URIs
+                    return None
+                hostname = hostname.lower()
+                # Remove default ports for comparison
+                if (parsed_url.scheme == 'http' and parsed_url.port == 80) or \
+                   (parsed_url.scheme == 'https' and parsed_url.port == 443):
+                    return hostname
+                # If port is non-standard, use netloc (which includes port), else just hostname
+                return parsed_url.netloc.lower() if parsed_url.port else hostname
 
-            if not redirect_domain:
+            original_hostname = get_normalized_hostname(original_url_str)
+            redirect_hostname = get_normalized_hostname(final_redirect_location_str)
+            payload_hostname = get_normalized_hostname(payload_value_str)
+
+            if not redirect_hostname: # e.g. redirect to "javascript:alert(1)"
                 if self.config.get('verbose'):
-                    print(f"{Fore.CYAN}[DEBUG SCANNER] Not external: Redirect location has no domain. Original: {original_domain}, Final Dest: {final_redirect_location_str}, Payload: {payload_domain}{Style.RESET_ALL}")
+                    print(f"{Fore.CYAN}[DEBUG SCANNER] Not external: Redirect location has no valid hostname. Original: {original_hostname}, Final Dest: {final_redirect_location_str}, Payload: {payload_hostname}{Style.RESET_ALL}")
                 return False
 
-            if original_domain == redirect_domain:
+            # Case 1: Redirect to the exact same normalized hostname (internal redirect)
+            if original_hostname and original_hostname == redirect_hostname:
                 if self.config.get('verbose'):
-                    print(f"{Fore.CYAN}[DEBUG SCANNER] Not external: Redirect to same domain. Original: {original_domain}, Final Dest: {redirect_domain}, Payload: {payload_domain}{Style.RESET_ALL}")
+                    print(f"{Fore.CYAN}[DEBUG SCANNER] Not external: Redirect to same normalized hostname. Original: {original_hostname}, Redirected: {redirect_hostname}, Payload: {payload_hostname}{Style.RESET_ALL}")
                 return False
+
+            # Case 2: Redirect to the payload's normalized hostname (potential vulnerability)
+            if payload_hostname and redirect_hostname == payload_hostname:
+                # This is the primary condition for an open redirect to a controlled payload domain.
+                # We've already established original_hostname != redirect_hostname (or original_hostname is None).
+                if self.config.get('verbose'):
+                    print(f"{Fore.GREEN}[DEBUG SCANNER] External redirect CONFIRMED: Original Host: {original_hostname}, Redirected Host: {redirect_hostname} (Matches payload host: {payload_hostname}){Style.RESET_ALL}")
+                return True
+        
+            # Case 3: Redirect is to a different domain, but not the payload's domain
+            if self.config.get('verbose'):
+                print(f"{Fore.YELLOW}[DEBUG SCANNER] Not external: Redirect host ({redirect_hostname}) differs from original ({original_hostname}) but does NOT match payload host ({payload_hostname}). Final Dest: {final_redirect_location_str}{Style.RESET_ALL}")
+            return False
+        
+        except Exception as e:
+            if self.config.get('verbose'):
+                print(f"{Fore.RED}[DEBUG SCANNER ERROR] Exception in _is_external_redirect: {e}. Original: {original_url_str}, Location: {final_redirect_location_str}, Payload: {payload_value_str}{Style.RESET_ALL}")
+            return False
 
             if payload_domain and redirect_domain == payload_domain:
                 if self.config.get('verbose'):
@@ -678,19 +655,57 @@ class OpenRedirectScanner:
                 print(f"{Fore.YELLOW}[DEBUG SCANNER] Not external: Redirect domain ({redirect_domain}) differs from original ({original_domain}) but does NOT match payload domain ({payload_domain}). Final Dest: {final_redirect_location_str}{Style.RESET_ALL}")
             return False
             
-        except Exception as e:
-            if self.config.get('verbose'):
-                print(f"{Fore.RED}[DEBUG SCANNER ERROR] Exception in _is_external_redirect: {e}. Original: {original_url_str}, Location: {final_redirect_location_str}, Payload: {payload_value_str}{Style.RESET_ALL}")
-            return False
 
-    def _determine_severity(self, payload, redirect_location):
-        """Determine vulnerability severity based on payload and redirect location"""
-        if any(domain in redirect_location.lower() for domain in ['evil.com', 'attacker.com', 'malicious.com']):
+    def _determine_severity(self, original_url_str, payload_value_str, final_redirect_location_str):
+        """Determine vulnerability severity based on payload and redirect location."""
+        
+        # JavaScript/Data URIs are always High
+        if final_redirect_location_str.startswith(('javascript:', 'data:', 'vbscript:')):
             return 'High'
-        elif redirect_location.startswith('http'):
-            return 'Medium'
-        else:
-            return 'Low'
+
+        # Check if it's an external redirect to the payload's domain
+        # _is_external_redirect already handles hostname normalization and comparison.
+        is_vuln_external_redirect = self._is_external_redirect(original_url_str, final_redirect_location_str, payload_value_str)
+        if is_vuln_external_redirect:
+            return 'High'
+        
+        # If not a high-severity script URI or direct payload domain redirect,
+        # check if it's any other form of HTTP/HTTPS redirect.
+        if final_redirect_location_str.startswith(('http://', 'https://', '//')):
+            try:
+                # We need to compare hostnames to see if it's an internal or external (to non-payload) redirect
+                # Accessing the nested get_normalized_hostname directly is tricky / not ideal from here.
+                # So, we call urlparse here again. This is slightly redundant but ensures correctness for this method's scope.
+                parsed_original_url = urlparse(original_url_str)
+                parsed_redirect_url = urlparse(final_redirect_location_str)
+
+                # Use netloc for comparison as it includes port, which is important for same-site check.
+                original_netloc = parsed_original_url.netloc.lower() if parsed_original_url.netloc else None
+                redirect_netloc = parsed_redirect_url.netloc.lower() if parsed_redirect_url.netloc else None
+
+                if original_netloc and redirect_netloc: # Both URLs have network locations
+                    if original_netloc != redirect_netloc:
+                        # Different netloc implies an external redirect.
+                        # Since it wasn't caught by _is_external_redirect, it's to a non-payload domain.
+                        return 'Medium' 
+                    else:
+                        # Same netloc, so it's an internal redirect.
+                        return 'Low' 
+                elif redirect_netloc: 
+                    # Original_netloc is empty (e.g. 'file://' or malformed), but redirect_netloc is not.
+                    # This is likely an external redirect.
+                    return 'Medium'
+                else: 
+                    # Both netlocs might be empty, or redirect_netloc is empty (e.g. 'javascript:').
+                    # javascript: case is handled above. Other cases are likely Low.
+                    return 'Low'    
+            except Exception: # pylint: disable=broad-except
+                # If any parsing error occurs, default to Low.
+                if self.config.get('verbose'):
+                    print(f"{Fore.YELLOW}[DEBUG SCANNER] Error during severity determination (medium/low check) for: {original_url_str} -> {final_redirect_location_str}{Style.RESET_ALL}")
+                return 'Low' 
+                
+        return 'Low' # Default for non-HTTP/S redirects or other cases not caught (e.g. 'mailto:', 'ftp:')
     
     def scan_single_url(self, url):
         """Scan a single URL for open redirect vulnerabilities"""
@@ -714,43 +729,58 @@ class OpenRedirectScanner:
             ]
         
         # Get payloads for testing
-        payloads = self.payload_manager.get_payloads()
+        all_payloads = self.payload_manager.get_payloads()
         
         # In fast mode, limit payloads per parameter but test all likely parameters
         if self.config.get('fast'):
-            payloads = payloads[:3]  # Only test first 3 most effective payloads per parameter
+            effective_payloads_param = all_payloads[:3]
+        else:
+            effective_payloads_param = all_payloads
         
-        # Flag to track if we found any vulnerability on this URL
-        url_vulnerable = False
+        url_vulnerable_flag = False # Tracks if any vulnerability is found for this URL
         
         # Test URL parameters
         for param in redirect_params:
-            if url_vulnerable and self.config.get('fast'):
-                # If we already found a vulnerability and we're in fast mode, stop testing this URL
-                break
-                
-            for payload in payloads:
-                result = self.test_url_parameter(url, param, payload)
+            if url_vulnerable_flag and self.config.get('fast'):
+                break 
+            
+            for payload_item in effective_payloads_param:
+                result = self.test_url_parameter(url, param, payload_item)
                 if result:
-                    results.append(result)
-                    if result['vulnerable']:
-                        url_vulnerable = True
-                        if self.config.get('verbose'):
-                            print(f"{Fore.RED}[VULNERABLE] {url} - Parameter: {param}, Payload: {payload}{Style.RESET_ALL}")
+                    if result.get('vulnerable'):
+                        try:
+                            severity = self._determine_severity(
+                                result.get('original_url'), 
+                                result.get('payload'), 
+                                result.get('final_location')
+                            )
+                            result['severity'] = severity
+                        except KeyError as e_key:
+                            if self.config.get('verbose'): print(f"{Fore.RED}[ERROR SCANNER] Param Sev Det: Missing key {e_key} in {result}{Style.RESET_ALL}")
+                            result['severity'] = 'ErrorDeterminingSeverity'
+                        except Exception as e_sev:
+                            if self.config.get('verbose'): print(f"{Fore.RED}[ERROR SCANNER] Param Sev Det: Error for {result}: {e_sev}{Style.RESET_ALL}")
+                            result['severity'] = 'ErrorDeterminingSeverity'
                         
-                        # In fast mode, stop testing this URL completely after finding any vulnerability
+                        url_vulnerable_flag = True
+                        if self.config.get('verbose'):
+                            print(f"{Fore.RED}[VULNERABLE] {url} - Parameter: {param}, Payload: {payload_item}, Severity: {result.get('severity')}{Style.RESET_ALL}")
+                        
+                        results.append(result)
                         if self.config.get('fast'):
-                            if self.config.get('verbose'):
-                                print(f"{Fore.YELLOW}[FAST MODE] Found vulnerability on URL '{url}', stopping further tests on this URL{Style.RESET_ALL}")
-                            return results  # Return immediately with the first vulnerability
-        
-        # If we're in fast mode and already found a vulnerability, return early
-        if url_vulnerable and self.config.get('fast'):
-            return results
+                            if self.config.get('verbose'): print(f"{Fore.YELLOW}[FAST MODE] Param test: Found vulnerability on URL '{url}', stopping all further tests on this URL.{Style.RESET_ALL}")
+                            return results 
+                    else:
+                        results.append(result) 
         
         # Test header injection if enabled
         if self.config.get('headers_test'):
-            header_payloads = self.payload_manager.get_header_payloads()
+            header_payloads_all = self.payload_manager.get_header_payloads()
+            if self.config.get('fast'):
+                effective_payloads_header = header_payloads_all[:3] 
+            else:
+                effective_payloads_header = header_payloads_all
+            
             header_names = [
                 'Host', 'X-Forwarded-Host', 'X-Forwarded-For', 'X-Real-IP', 
                 'X-Forwarded-Proto', 'X-Forwarded-Server', 'X-Host', 'X-HTTP-Host-Override',
@@ -758,37 +788,103 @@ class OpenRedirectScanner:
             ]
             
             for header_name in header_names:
-                for payload in header_payloads:
-                    result = self.test_header_injection(url, header_name, payload)
+                if url_vulnerable_flag and self.config.get('fast'):
+                    break
+
+                for payload_item in effective_payloads_header:
+                    result = self.test_header_injection(url, header_name, payload_item)
                     if result:
-                        results.append(result)
-                        if result['vulnerable']:
+                        if result.get('vulnerable'):
+                            try:
+                                severity = self._determine_severity(
+                                    result.get('original_url'), 
+                                    result.get('payload'), 
+                                    result.get('final_location')
+                                )
+                                result['severity'] = severity
+                            except KeyError as e_key:
+                                if self.config.get('verbose'): print(f"{Fore.RED}[ERROR SCANNER] Header Sev Det: Missing key {e_key} in {result}{Style.RESET_ALL}")
+                                result['severity'] = 'ErrorDeterminingSeverity'
+                            except Exception as e_sev:
+                                if self.config.get('verbose'): print(f"{Fore.RED}[ERROR SCANNER] Header Sev Det: Error for {result}: {e_sev}{Style.RESET_ALL}")
+                                result['severity'] = 'ErrorDeterminingSeverity'
+
+                            url_vulnerable_flag = True
                             if self.config.get('verbose'):
-                                print(f"{Fore.RED}[VULNERABLE] {url} - Header: {header_name}, Payload: {payload}{Style.RESET_ALL}")
+                                print(f"{Fore.RED}[VULNERABLE] {url} - Header: {header_name}, Payload: {payload_item}, Severity: {result.get('severity')}{Style.RESET_ALL}")
+                            
+                            results.append(result)
                             if self.config.get('fast'):
-                                return results  # In fast mode, return after first vulnerability
+                                if self.config.get('verbose'): print(f"{Fore.YELLOW}[FAST MODE] Header test: Found vulnerability on URL '{url}', stopping all further tests on this URL.{Style.RESET_ALL}")
+                                return results 
+                        else:
+                            results.append(result)
         
         # Test form-based redirects
-        form_results = self.test_form_redirects(url)
-        if form_results:
-            results.extend(form_results)
-            # Check if any form results were vulnerable
-            if self.config.get('fast') and any(r.get('vulnerable', False) for r in form_results):
-                return results  # In fast mode, return after first vulnerability
+        form_results_list = self.test_form_redirects(url)
+        if form_results_list:
+            processed_form_results = []
+            any_form_vulnerable_in_batch = False
+            for res_item in form_results_list:
+                if res_item.get('vulnerable'):
+                    try:
+                        severity = self._determine_severity(
+                            res_item.get('original_url'),
+                            res_item.get('payload'),
+                            res_item.get('final_location')
+                        )
+                        res_item['severity'] = severity
+                    except KeyError as e_key:
+                        if self.config.get('verbose'): print(f"{Fore.RED}[ERROR SCANNER] Form Sev Det: Missing key {e_key} in {res_item}{Style.RESET_ALL}")
+                        res_item['severity'] = 'ErrorDeterminingSeverity'
+                    except Exception as e_sev:
+                        if self.config.get('verbose'): print(f"{Fore.RED}[ERROR SCANNER] Form Sev Det: Error for {res_item}: {e_sev}{Style.RESET_ALL}")
+                        res_item['severity'] = 'ErrorDeterminingSeverity'
+                    
+                    any_form_vulnerable_in_batch = True
+                    url_vulnerable_flag = True
+                    if self.config.get('verbose'):
+                        print(f"{Fore.RED}[VULNERABLE SCANNER] {res_item.get('url')} - Form Param: {res_item.get('parameter', 'N/A')}, Payload: {res_item.get('payload')}, Method: {res_item.get('method')}, Severity: {res_item.get('severity')}{Style.RESET_ALL}")
+                processed_form_results.append(res_item)
+            
+            results.extend(processed_form_results)
+            if self.config.get('fast') and any_form_vulnerable_in_batch:
+                if self.config.get('verbose'): print(f"{Fore.YELLOW}[FAST MODE] Form test: Found vulnerability on URL '{url}', stopping all further tests on this URL.{Style.RESET_ALL}")
+                return results
         
         # Test cookie-based redirects
-        cookie_results = self.test_cookie_redirects(url)
-        if cookie_results:
-            results.extend(cookie_results)
-            # Check if any cookie results were vulnerable
-            if self.config.get('fast') and any(r.get('vulnerable', False) for r in cookie_results):
-                return results  # In fast mode, return after first vulnerability
+        cookie_results_list = self.test_cookie_redirects(url)
+        if cookie_results_list:
+            processed_cookie_results = []
+            any_cookie_vulnerable_in_batch = False
+            for res_item in cookie_results_list:
+                if res_item.get('vulnerable'):
+                    try:
+                        severity = self._determine_severity(
+                            res_item.get('original_url'),
+                            res_item.get('payload'),
+                            res_item.get('final_location')
+                        )
+                        res_item['severity'] = severity
+                    except KeyError as e_key:
+                        if self.config.get('verbose'): print(f"{Fore.RED}[ERROR SCANNER] Cookie Sev Det: Missing key {e_key} in {res_item}{Style.RESET_ALL}")
+                        res_item['severity'] = 'ErrorDeterminingSeverity'
+                    except Exception as e_sev:
+                        if self.config.get('verbose'): print(f"{Fore.RED}[ERROR SCANNER] Cookie Sev Det: Error for {res_item}: {e_sev}{Style.RESET_ALL}")
+                        res_item['severity'] = 'ErrorDeterminingSeverity'
+
+                    any_cookie_vulnerable_in_batch = True
+                    url_vulnerable_flag = True
+                    if self.config.get('verbose'):
+                         print(f"{Fore.RED}[VULNERABLE SCANNER] {res_item.get('url')} - Cookie: {res_item.get('cookie_name', 'N/A')}, Payload: {res_item.get('payload')}, Method: {res_item.get('method')}, Severity: {res_item.get('severity')}{Style.RESET_ALL}")
+                processed_cookie_results.append(res_item)
+
+            results.extend(processed_cookie_results)
+            if self.config.get('fast') and any_cookie_vulnerable_in_batch:
+                if self.config.get('verbose'): print(f"{Fore.YELLOW}[FAST MODE] Cookie test: Found vulnerability on URL '{url}', stopping all further tests on this URL.{Style.RESET_ALL}")
+                return results
         
         return results
-    
-    def scan_urls(self, urls):
-        """Scan multiple URLs using thread pool"""
-        all_results = []
         
         # In fast mode, scan URLs sequentially, stop testing each URL after first vulnerability found
         if self.config.get('fast'):

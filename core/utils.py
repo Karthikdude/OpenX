@@ -87,102 +87,74 @@ def extract_redirect_params(url):
     except:
         return common_redirect_params[:10]
 
-def validate_redirect(payload, redirect_location, callback_url=None):
-    """Validate if a redirect is successful and potentially vulnerable
-    
-    A redirect is considered vulnerable if:
-    1. The redirect_location domain exactly matches the payload domain
-    2. The redirect_location contains the payload domain as a subdomain
-    3. The redirect uses a javascript: or data: URI scheme
-    4. If a callback_url is provided, the redirect matches that domain
+
+def get_normalized_hostname_util(url_str):
+    if not url_str:
+        return None
+    try:
+        parsed_url = urlparse(url_str) # urlparse is already imported in utils.py
+        hostname = parsed_url.hostname
+        if not hostname: # Handles cases like 'javascript:' or 'data:' URIs
+            return None
+        hostname = hostname.lower()
+        # Remove default ports for comparison
+        if (parsed_url.scheme == 'http' and parsed_url.port == 80) or \
+           (parsed_url.scheme == 'https' and parsed_url.port == 443):
+            return hostname
+        # If port is non-standard, use netloc (which includes port), else just hostname
+        return parsed_url.netloc.lower() if parsed_url.port else hostname
+    except ValueError: # Handle malformed URLs that urlparse might struggle with
+        return None
+
+def validate_redirect(original_url_str, final_redirect_location_str, payload_value_str, callback_url=None):
+    """
+    Validate if a redirect is successful and potentially vulnerable.
+    A redirect is considered a successful exploitation if:
+    1. The redirect_location uses a javascript:, data:, or vbscript: URI scheme.
+    2. The redirect_location's normalized hostname matches the payload's normalized hostname,
+       AND this hostname is different from the original_url's normalized hostname.
+    3. If a callback_url is provided, the redirect_location's normalized hostname matches 
+       the callback_url's normalized hostname and is different from the original.
     """
     try:
-        # Normalize the redirect location
-        redirect_location = redirect_location.strip()
-        
-        # If no redirect location, it's not vulnerable
-        if not redirect_location:
+        final_redirect_location_str = final_redirect_location_str.strip()
+        if not final_redirect_location_str:
             return False
-        
-        # Check for JavaScript/data scheme redirects (these are always vulnerable)
-        if redirect_location.startswith(('javascript:', 'data:', 'vbscript:')):
+
+        # Check for JavaScript/data/vbscript scheme redirects (these are always a direct hit)
+        if final_redirect_location_str.startswith(('javascript:', 'data:', 'vbscript:')):
             return True
             
-        # Extract the payload domain for comparison
-        payload_domain = None
-        if '://' in payload:
-            try:
-                payload_parsed = urlparse(payload)
-                payload_domain = payload_parsed.netloc.lower()
-            except:
-                pass
-        
-        # If we couldn't extract a domain from the payload, it's not vulnerable
-        if not payload_domain:
+        original_hostname = get_normalized_hostname_util(original_url_str)
+        redirect_hostname = get_normalized_hostname_util(final_redirect_location_str)
+        payload_hostname = get_normalized_hostname_util(payload_value_str)
+
+        if not redirect_hostname: # Could be a malformed redirect or non-HTTP scheme not caught above
             return False
-        
-        # Extract the redirect domain for comparison
-        redirect_domain = None
-        if redirect_location.startswith(('http://', 'https://', '//')):
-            try:
-                # Handle protocol-relative URLs
-                if redirect_location.startswith('//'):
-                    redirect_location = 'http:' + redirect_location
-                    
-                redirect_parsed = urlparse(redirect_location)
-                redirect_domain = redirect_parsed.netloc.lower()
-            except:
-                pass
-        
-        # If we couldn't extract a domain from the redirect, it's not vulnerable
-        if not redirect_domain:
+
+        # If callback URL is provided, it takes precedence for validation
+        if callback_url:
+            callback_hostname = get_normalized_hostname_util(callback_url)
+            # Validate if redirect is to the callback host and not a self-redirect to original if original is also callback
+            if callback_hostname and redirect_hostname == callback_hostname and original_hostname != callback_hostname:
+                return True 
+            # If callback is set, and redirect doesn't match it as per above, then it's not a valid redirect for callback purposes.
             return False
-        
-        # If callback URL is provided, check for exact domain match
-        if callback_url and redirect_domain:
-            callback_parsed = urlparse(callback_url)
-            callback_domain = callback_parsed.netloc.lower()
-            return callback_domain == redirect_domain
-        
-        # Check for exact domain match with payload
-        if payload_domain == redirect_domain:
-            return True
-        
-        # Check if redirect domain ends with the payload domain (subdomain case)
-        if redirect_domain.endswith('.' + payload_domain):
+
+
+        if not payload_hostname: # If payload has no discernible hostname, can't match
+            return False
+
+        # Core open redirect validation:
+        # 1. Redirect hostname must match payload hostname
+        # 2. Redirect hostname must be different from original hostname (to prevent self-redirects being flagged as open)
+        if redirect_hostname == payload_hostname and original_hostname != payload_hostname:
             return True
             
-        # Check if the redirect URL contains the payload domain as a parameter
-        # This is NOT a vulnerability - the domain must be the actual destination
-        # HubSpot and similar services often include the original URL as a parameter
-        
-        # Check for common malicious domains that we're testing with
-        vulnerability_indicators = [
-            'evil.com', 'attacker.com', 'malicious.com', 'example.com', 'test.com',
-            'xss.rocks', 'hackme.com', 'attacker-site.com'
-        ]
-        
-        # Only consider it vulnerable if the redirect_domain itself matches our test domains
-        for indicator in vulnerability_indicators:
-            if redirect_domain == indicator or redirect_domain.endswith('.' + indicator):
-                return True
-        
-        # If the payload domain is in our list of test domains and the redirect is NOT to
-        # a known safe domain like login pages, then it might be vulnerable
-        if any(payload_domain == indicator or payload_domain.endswith('.' + indicator) 
-               for indicator in vulnerability_indicators):
-            
-            # Check against known safe domains that are not vulnerable
-            safe_domains = ['hubspot.com', 'app.hubspot.com', 'login', 'auth', 'sso']
-            if any(safe in redirect_domain for safe in safe_domains):
-                return False
-                
-            return True
-        
         return False
         
     except Exception as e:
-        print(f"Error in validate_redirect: {str(e)}")
+        # print(f"Error in validate_redirect: {str(e)}") # Optional: for debugging
         return False
 
 def extract_domain(url):
