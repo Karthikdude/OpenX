@@ -16,6 +16,8 @@ from colorama import Fore, Back, Style, init
 from core.scanner import OpenRedirectScanner
 from core.output import OutputManager
 from core.utils import display_banner, validate_url, load_urls_from_file
+import shutil
+import subprocess
 
 # Initialize colorama for cross-platform colored output
 init(autoreset=True)
@@ -23,6 +25,8 @@ init(autoreset=True)
 def parse_arguments():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(
+        prog='openx.py',
+        description="OpenX - Advanced Open Redirect Vulnerability Scanner",
         description="OpenX - Advanced Open Redirect Vulnerability Scanner",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
@@ -31,12 +35,16 @@ Examples:
   python openx.py -l urls.txt -o results.json
   python openx.py -u https://example.com --threads 20 --timeout 15
   python openx.py -l domains.txt --headers --verbose
+  python openx.py -e example.com -c http://mycallback.com --fast --verbose
         """
     )
     
-    # Primary arguments
-    parser.add_argument('-u', '--url', help='Single target URL for scanning')
-    parser.add_argument('-l', '--list', help='Path to file containing list of URLs to scan')
+    # Primary Target Specification (Mutually Exclusive)
+    target_group = parser.add_mutually_exclusive_group(required=True)
+    target_group.add_argument('-u', '--url', help='Single target URL for scanning')
+    target_group.add_argument('-l', '--list', help='Path to file containing list of URLs to scan (one URL per line)')
+    target_group.add_argument('-e', '--external', metavar='DOMAIN', help='Domain to gather URLs from using external tools (gau/waybackurls, gf, uro)')
+
     parser.add_argument('-o', '--output', help='Output file path with format auto-detection')
     parser.add_argument('-c', '--callback', help='Callback URL (Burp Collaborator or custom endpoint)')
     
@@ -57,6 +65,113 @@ Examples:
     
     return parser.parse_args()
 
+def check_tool_installed(tool_name):
+    """Check if a tool is installed and in PATH."""
+    return shutil.which(tool_name) is not None
+
+def run_command_and_get_output(command_parts, verbose=False):
+    """Run a shell command and return its stdout lines or None on error."""
+    if verbose:
+        print(f"{Fore.CYAN}[INFO] Running command: {' '.join(command_parts)}{Style.RESET_ALL}")
+    try:
+        process = subprocess.Popen(command_parts, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        stdout, stderr = process.communicate()
+        if process.returncode != 0:
+            if verbose:
+                print(f"{Fore.RED}[ERROR] Command '{' '.join(command_parts)}' failed with error:\n{stderr.strip()}{Style.RESET_ALL}")
+            return None
+        return stdout.strip().splitlines()
+    except FileNotFoundError:
+        if verbose:
+            print(f"{Fore.RED}[ERROR] Command not found: {command_parts[0]}{Style.RESET_ALL}")
+        return None
+    except Exception as e:
+        if verbose:
+            print(f"{Fore.RED}[ERROR] Exception running command '{' '.join(command_parts)}': {e}{Style.RESET_ALL}")
+        return None
+
+def get_urls_from_external_sources(domain, verbose=False):
+    """Fetch and process URLs using external tools."""
+    urls = []
+    temp_urls_file = f"{domain}_temp_external_urls.txt"
+
+    # Check for gf and uro first as they are essential for processing
+    if not check_tool_installed('gf'):
+        print(f"{Fore.RED}[ERROR] 'gf' tool not found. Please install it to use the --external feature.{Style.RESET_ALL}")
+        return []
+    if not check_tool_installed('uro'):
+        print(f"{Fore.RED}[ERROR] 'uro' tool not found. Please install it to use the --external feature.{Style.RESET_ALL}")
+        return []
+
+    # Step 1: Get URLs using gau or waybackurls
+    source_tool_output = None
+    if check_tool_installed('gau'):
+        print(f"{Fore.CYAN}[INFO] Using 'gau' to fetch URLs for {domain}...{Style.RESET_ALL}")
+        source_tool_output = run_command_and_get_output(['gau', domain], verbose=verbose)
+    elif check_tool_installed('waybackurls'):
+        print(f"{Fore.CYAN}[INFO] 'gau' not found. Using 'waybackurls' to fetch URLs for {domain}...{Style.RESET_ALL}")
+        source_tool_output = run_command_and_get_output(['waybackurls', domain], verbose=verbose)
+    else:
+        print(f"{Fore.RED}[ERROR] Neither 'gau' nor 'waybackurls' found. Please install one of them.{Style.RESET_ALL}")
+        return []
+
+    if not source_tool_output:
+        print(f"{Fore.YELLOW}[WARNING] No URLs found by an external source tool for {domain}.{Style.RESET_ALL}")
+        return []
+    
+    print(f"{Fore.GREEN}[INFO] Found {len(source_tool_output)} initial URLs from source tool.{Style.RESET_ALL}")
+
+    # Step 2: Filter for redirect patterns using gf redirect
+    # We need to pass the output of gau/waybackurls to gf via stdin
+    print(f"{Fore.CYAN}[INFO] Filtering URLs with 'gf redirect'...{Style.RESET_ALL}")
+    try:
+        gf_process = subprocess.Popen(['gf', 'redirect'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        gf_stdout, gf_stderr = gf_process.communicate(input='\n'.join(source_tool_output))
+        if gf_process.returncode != 0:
+            if verbose:
+                print(f"{Fore.RED}[ERROR] 'gf redirect' failed with error:\n{gf_stderr.strip()}{Style.RESET_ALL}")
+            return []
+        redirect_urls = gf_stdout.strip().splitlines()
+    except FileNotFoundError:
+        if verbose:
+            print(f"{Fore.RED}[ERROR] Command not found: gf{Style.RESET_ALL}")
+        return [] # gf is checked above, but defensive
+    except Exception as e:
+        if verbose:
+            print(f"{Fore.RED}[ERROR] Exception running 'gf redirect': {e}{Style.RESET_ALL}")
+        return []
+
+    if not redirect_urls:
+        print(f"{Fore.YELLOW}[WARNING] No redirect URLs found by 'gf redirect'.{Style.RESET_ALL}")
+        return []
+    print(f"{Fore.GREEN}[INFO] Found {len(redirect_urls)} potential redirect URLs after 'gf redirect'.{Style.RESET_ALL}")
+
+    # Step 3: Deduplicate using uro
+    print(f"{Fore.CYAN}[INFO] Deduplicating URLs with 'uro'...{Style.RESET_ALL}")
+    try:
+        uro_process = subprocess.Popen(['uro'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        uro_stdout, uro_stderr = uro_process.communicate(input='\n'.join(redirect_urls))
+        if uro_process.returncode != 0:
+            if verbose:
+                print(f"{Fore.RED}[ERROR] 'uro' failed with error:\n{uro_stderr.strip()}{Style.RESET_ALL}")
+            return [] # Return empty if uro fails, as it's part of the chain
+        final_urls = uro_stdout.strip().splitlines()
+    except FileNotFoundError:
+        if verbose:
+            print(f"{Fore.RED}[ERROR] Command not found: uro{Style.RESET_ALL}")
+        return [] # uro is checked above, but defensive
+    except Exception as e:
+        if verbose:
+            print(f"{Fore.RED}[ERROR] Exception running 'uro': {e}{Style.RESET_ALL}")
+        return []
+
+    if not final_urls:
+        print(f"{Fore.YELLOW}[WARNING] No URLs left after 'uro' deduplication.{Style.RESET_ALL}")
+        return []
+
+    print(f"{Fore.GREEN}[INFO] Final list contains {len(final_urls)} unique redirect URLs for {domain}.{Style.RESET_ALL}")
+    return final_urls
+
 def main():
     """Main function"""
     args = parse_arguments()
@@ -66,9 +181,11 @@ def main():
         display_banner()
     
     # Validate input arguments
-    if not args.url and not args.list:
-        print(f"{Fore.RED}[ERROR] Either -u/--url or -l/--list must be specified{Style.RESET_ALL}")
-        sys.exit(1)
+    # This is now handled by argparse mutually_exclusive_group(required=True)
+    # if not args.url and not args.list and not args.external:
+    #     parser.print_help()
+    #     print(f"{Fore.RED}[ERROR] You must specify a target: -u, -l, or -e{Style.RESET_ALL}")
+    #     sys.exit(1)
     
     # Prepare target URLs
     target_urls = []
@@ -89,6 +206,14 @@ def main():
             print(f"{Fore.RED}[ERROR] No valid URLs found in file: {args.list}{Style.RESET_ALL}")
             sys.exit(1)
         target_urls.extend(list_urls)
+    
+    if args.external:
+        print(f"{Fore.CYAN}[INFO] Using external tools to gather URLs for domain: {args.external}{Style.RESET_ALL}")
+        external_urls = get_urls_from_external_sources(args.external, args.verbose)
+        if not external_urls:
+            print(f"{Fore.YELLOW}[WARNING] No URLs obtained from external tools for domain {args.external}. Exiting.{Style.RESET_ALL}")
+            sys.exit(1)
+        target_urls.extend(external_urls)
     
     if not target_urls:
         print(f"{Fore.RED}[ERROR] No valid URLs to scan{Style.RESET_ALL}")
