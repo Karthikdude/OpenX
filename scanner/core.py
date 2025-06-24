@@ -7,6 +7,7 @@ import urllib.parse
 import re
 import time
 import threading
+import urllib3
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from colorama import Fore, Style
 from .payloads import PayloadManager
@@ -58,6 +59,10 @@ class Scanner:
         
         # Configure session to handle Unicode properly
         self.session.encoding = 'utf-8'
+        
+        # Suppress only the InsecureRequestWarning if verify_ssl is False
+        if not self.verify_ssl:
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
     
     def log(self, message, level='INFO', color=Fore.WHITE):
         """Thread-safe logging"""
