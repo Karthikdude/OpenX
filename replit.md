@@ -151,6 +151,14 @@ The project is designed to serve both security professionals conducting penetrat
   - Updated GitHub repository information to https://github.com/Karthikdude/openx.git
   - Enhanced CLI help text and version information for better user experience
 
+- June 24, 2025: STDIN and pipe support integration
+  - Added full STDIN support for reading URLs from pipes
+  - Implemented auto-detection of piped input for seamless tool integration
+  - Added explicit --stdin flag for manual STDIN mode
+  - Enhanced integration with external tools (gau, waybackurls, subfinder, httpx)
+  - Updated documentation with comprehensive pipe usage examples
+  - Successfully tested pipe integration with vulnerability detection working correctly
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.

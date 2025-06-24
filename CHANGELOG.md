@@ -38,6 +38,9 @@ All notable changes to OpenX will be documented in this file.
 - Improved payload generation and management
 - Optimized performance for large-scale scanning
 - Added support for custom callback URLs and payloads
+- Full STDIN and pipe support for seamless tool integration
+- Auto-detection of piped input for workflow automation
+- Enhanced external tool compatibility (gau, waybackurls, subfinder, httpx)
 
 ## Development Roadmap
 

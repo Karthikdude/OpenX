@@ -45,17 +45,22 @@ Examples:
   openx -l urls.txt --payloads custom.txt -o results.json
   openx -e example.com --e-gau -s -f
   openx -u "https://target.com" --headers --proxy http://127.0.0.1:8080 -v
+  echo "https://example.com/redirect?url=" | openx
+  cat urls.txt | openx --headers -o results.json
+  gau example.com | grep redirect | openx --fast
         """
     )
     
     # Target input methods (mutually exclusive)
-    target_group = parser.add_mutually_exclusive_group(required=True)
+    target_group = parser.add_mutually_exclusive_group(required=False)
     target_group.add_argument('-u', '--url', 
                              help='Single URL to test')
     target_group.add_argument('-l', '--list', 
                              help='File containing URLs (one per line)')
     target_group.add_argument('-e', '--external', 
                              help='Domain or file for external tool integration')
+    target_group.add_argument('--stdin', action='store_true',
+                             help='Read URLs from STDIN (pipe support)')
     
     # External tool options
     parser.add_argument('--e-gau', action='store_true',
@@ -187,6 +192,54 @@ def main():
             
             if not urls:
                 print(f"{Fore.RED}[ERROR] No URLs gathered from external tools{Style.RESET_ALL}")
+                sys.exit(1)
+        
+        elif args.stdin:
+            # Read URLs from STDIN explicitly
+            try:
+                import sys
+                urls = []
+                for line in sys.stdin:
+                    line = line.strip()
+                    if line and not line.startswith('#'):  # Skip empty lines and comments
+                        if validate_url(line):
+                            urls.append(line)
+                        elif not args.silent:
+                            print(f"{Fore.YELLOW}[WARNING] Skipping invalid URL: {line}{Style.RESET_ALL}")
+                if not urls:
+                    print(f"{Fore.RED}[ERROR] No valid URLs provided via STDIN{Style.RESET_ALL}")
+                    sys.exit(1)
+            except KeyboardInterrupt:
+                print(f"\n{Fore.YELLOW}[INFO] Interrupted by user{Style.RESET_ALL}")
+                sys.exit(0)
+            except Exception as e:
+                print(f"{Fore.RED}[ERROR] Failed to read from STDIN: {e}{Style.RESET_ALL}")
+                sys.exit(1)
+        
+        else:
+            # Check if data is being piped (auto-detect STDIN)
+            import sys
+            
+            if not sys.stdin.isatty():
+                # Data is being piped, read from STDIN
+                try:
+                    urls = []
+                    for line in sys.stdin:
+                        line = line.strip()
+                        if line and not line.startswith('#'):
+                            if validate_url(line):
+                                urls.append(line)
+                            elif not args.silent:
+                                print(f"{Fore.YELLOW}[WARNING] Skipping invalid URL: {line}{Style.RESET_ALL}")
+                    if not urls:
+                        print(f"{Fore.RED}[ERROR] No valid URLs provided via pipe{Style.RESET_ALL}")
+                        sys.exit(1)
+                except Exception as e:
+                    print(f"{Fore.RED}[ERROR] Failed to read from pipe: {e}{Style.RESET_ALL}")
+                    sys.exit(1)
+            else:
+                print(f"{Fore.RED}[ERROR] No input method specified. Use -u, -l, -e, --stdin, or pipe URLs{Style.RESET_ALL}")
+                parser.print_help()
                 sys.exit(1)
         
         # Start scanning

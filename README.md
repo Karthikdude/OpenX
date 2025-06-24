@@ -24,6 +24,7 @@ The project serves both security professionals conducting penetration tests and 
 - **🛡️ Bypass Techniques**: Path traversal, header injection, encoding bypasses, CSRF chaining
 - **📊 Multiple Outputs**: JSON, CSV, TXT reporting formats
 - **🔗 External Integration**: Support for `gau` and `waybackurls` URL discovery tools
+- **📥 STDIN Support**: Full pipe support for integration with other security tools
 - **🎯 Smart Detection**: Automatic recognition of CVE-2025-4123 style vulnerabilities
 
 ### Flask Testing Lab
