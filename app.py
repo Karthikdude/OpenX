@@ -22,6 +22,9 @@ class Config:
     SECURITY_HEADERS_DISABLED = True
     DEBUG = True
     CALLBACK_URL = "http://callback.example.com"
+    VALID_APP_DOMAIN = "legitapp.com"
+    OAUTH_CLIENT_ID = "mock-client-id-123"
+    OAUTH_AUTHORIZE_URL = "/oauth/authorize"
 
 app.config.from_object(Config)
 
@@ -135,6 +138,48 @@ def dashboard():
             'description': 'Meta refresh tag vulnerability',
             'payloads': ['http://evil.com', 'javascript:alert(1)'],
             'category': 'Client-Side'
+        },
+        {
+            'name': 'OAuth Authorize',
+            'url': '/oauth/authorize?client_id=mock-client-id-123&redirect_uri=',
+            'description': 'OAuth authorization endpoint vulnerability',
+            'payloads': ['http://evil.com/callback', 'http://legitapp.com.evil.com/callback'],
+            'category': 'OAuth'
+        },
+        {
+            'name': 'Grafana Login',
+            'url': '/grafana-login?returnTo=',
+            'description': 'Grafana-style login redirect vulnerability',
+            'payloads': ['//evil.com/dashboard', 'javascript:alert(1)'],
+            'category': 'Enterprise'
+        },
+        {
+            'name': 'Payment Success',
+            'url': '/payment-success?success_url=',
+            'description': 'Payment gateway callback vulnerability',
+            'payloads': ['http://evil.com', 'https://evil.com/payment'],
+            'category': 'Enterprise'
+        },
+        {
+            'name': 'Email Confirm',
+            'url': '/email-confirm?return_to=',
+            'description': 'Email confirmation redirect vulnerability',
+            'payloads': ['//evil.com', 'http://evil.com/confirmed'],
+            'category': 'Enterprise'
+        },
+        {
+            'name': 'Advanced Whitelist',
+            'url': '/advanced-whitelist?url=',
+            'description': 'Advanced regex-based whitelist bypass',
+            'payloads': ['http://legitapp.com@evil.com', 'http://evil.com/legitapp.com'],
+            'category': 'Advanced'
+        },
+        {
+            'name': 'Chain Redirect',
+            'url': '/chain-redirect?first=',
+            'description': 'Multi-hop redirect chain vulnerability',
+            'payloads': ['http://evil.com', '//evil.com'],
+            'category': 'Advanced'
         }
     ]
     return render_template('dashboard.html', endpoints=endpoints)
@@ -348,6 +393,179 @@ def path_redirect(redirect_path):
     """Path-based redirect vulnerability"""
     # Vulnerable: directly redirects to path parameter
     return redirect(f'http://{redirect_path}')
+
+# OAuth-like Authorization Endpoint (Vulnerable)
+@app.route('/oauth/authorize')
+def oauth_authorize():
+    """OAuth authorization endpoint vulnerability"""
+    client_id = request.args.get('client_id')
+    redirect_uri = request.args.get('redirect_uri')
+    scope = request.args.get('scope')
+    state = request.args.get('state')
+
+    if not all([client_id, redirect_uri]):
+        return "Missing OAuth parameters", 400
+
+    # Simulate basic client_id check
+    if client_id != app.config['OAUTH_CLIENT_ID']:
+        return "Invalid client_id", 401
+
+    # VULNERABLE: Direct redirect_uri usage without strict validation
+    mock_auth_code = "mock-auth-code-xyz"
+    final_redirect_url = f"{redirect_uri}?code={mock_auth_code}&state={state}"
+    app.logger.info(f"OAuth redirecting to: {final_redirect_url}")
+    return redirect(final_redirect_url)
+
+# Grafana-like Login Redirect
+@app.route('/grafana-login', methods=['GET', 'POST'])
+def grafana_login():
+    """Grafana-style login redirect vulnerability"""
+    return_to = request.args.get('returnTo') or request.form.get('returnTo', '/')
+    
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        # Simulate successful login
+        if username == "admin" and password == "password":
+            flash("Logged into Grafana (mock) successfully!")
+            app.logger.info(f"Grafana login redirecting to: {return_to}")
+            return redirect(return_to)
+        else:
+            flash("Invalid credentials for Grafana (mock).")
+            return render_template('login.html', return_to=return_to)
+    
+    return render_template('login.html', return_to=return_to)
+
+# Payment Gateway Success Redirect
+@app.route('/payment-success')
+def payment_success():
+    """Payment gateway callback vulnerability"""
+    success_url = request.args.get('success_url') or request.args.get('return_url')
+    if success_url:
+        flash("Payment processed successfully!")
+        return redirect(success_url)
+    return "No success URL provided"
+
+# Email Confirmation Redirect
+@app.route('/email-confirm')
+def email_confirm():
+    """Email confirmation redirect vulnerability"""
+    return_to = request.args.get('return_to') or request.args.get('next')
+    token = request.args.get('token', 'mock-token')
+    
+    # Simulate email confirmation
+    if token:
+        flash("Email confirmed successfully!")
+        if return_to:
+            return redirect(return_to)
+    return redirect(url_for('dashboard'))
+
+# Advanced Whitelist Bypass
+@app.route('/advanced-whitelist')
+def advanced_whitelist():
+    """Advanced regex-based whitelist bypass"""
+    url = request.args.get('url')
+    if not url:
+        return "No URL parameter provided"
+    
+    # Advanced but still bypassable whitelist
+    import re
+    pattern = r'^https?://([\w-]+\.)?legitapp\.com(/.*)?$'
+    
+    if re.match(pattern, url):
+        return redirect(url)
+    
+    # Try to be "smart" but still vulnerable
+    if 'legitapp.com' in url and url.startswith('http'):
+        return redirect(url)
+    
+    return "URL not in whitelist"
+
+# Chain Redirect Vulnerability
+@app.route('/chain-redirect')
+def chain_redirect():
+    """Multi-hop redirect chain vulnerability"""
+    first = request.args.get('first')
+    if first:
+        # First hop - redirect to our "trusted" intermediate
+        intermediate_url = url_for('chain_intermediate', next=first, _external=True)
+        return redirect(intermediate_url)
+    return "No first URL provided"
+
+@app.route('/chain-intermediate')
+def chain_intermediate():
+    """Intermediate redirect in chain"""
+    next_url = request.args.get('next')
+    if next_url:
+        # Second hop - now redirect to final destination (vulnerable)
+        return redirect(next_url)
+    return redirect(url_for('success'))
+
+# Case Sensitivity Bypass
+@app.route('/case-bypass')
+def case_bypass():
+    """Case sensitivity bypass vulnerability"""
+    url = request.args.get('url')
+    blocked = ['evil.com', 'malicious.com', 'attacker.com']
+    
+    if url and not any(blocked_domain in url for blocked_domain in blocked):
+        # Vulnerable to case variations like Evil.com, EVIL.COM
+        return redirect(url)
+    return "Blocked URL detected"
+
+# Null Byte Injection
+@app.route('/null-byte-redirect')
+def null_byte_redirect():
+    """Null byte injection vulnerability"""
+    url = request.args.get('url')
+    if url:
+        # Vulnerable to null byte truncation
+        if '\x00' in url:
+            url = url.split('\x00')[0]  # Simulate truncation
+        return redirect(url)
+    return "No URL provided"
+
+# CRLF Injection
+@app.route('/crlf-redirect')
+def crlf_redirect():
+    """CRLF injection vulnerability"""
+    url = request.args.get('url')
+    if url:
+        # Vulnerable to CRLF injection for response splitting
+        return redirect(url)
+    return "No URL provided"
+
+# Proxy Header Vulnerability
+@app.route('/proxy-redirect')
+def proxy_redirect():
+    """Reverse proxy header vulnerability"""
+    # Vulnerable when X-Forwarded-Host is trusted
+    forwarded_host = request.headers.get('X-Forwarded-Host', request.host)
+    return redirect(f'https://{forwarded_host}/success')
+
+# Unicode Bypass
+@app.route('/unicode-bypass')
+def unicode_bypass():
+    """Unicode bypass vulnerability"""
+    url = request.args.get('url')
+    blocked = ['evil.com', 'malicious.com']
+    
+    if url:
+        # Simple ASCII check that misses Unicode variants
+        if not any(blocked in url for blocked in blocked):
+            return redirect(url)
+    return "Blocked URL"
+
+# File Upload Success Redirect
+@app.route('/upload-success')
+def upload_success():
+    """File upload success redirect"""
+    next_url = request.args.get('next_url') or request.args.get('continue')
+    if next_url:
+        flash("File uploaded successfully!")
+        return redirect(next_url)
+    return "Upload completed"
 
 # Error handler
 @app.errorhandler(404)

@@ -49,6 +49,9 @@ class Scanner:
         self.session.headers.update({'User-Agent': self.user_agent})
         if self.proxy:
             self.session.proxies.update(self.proxy)
+        
+        # Configure session to handle Unicode properly
+        self.session.encoding = 'utf-8'
     
     def log(self, message, level='INFO', color=Fore.WHITE):
         """Thread-safe logging"""
@@ -69,6 +72,10 @@ class Scanner:
         """Make HTTP request with error handling"""
         try:
             extra_headers = headers or {}
+            # Ensure URL is properly encoded
+            if isinstance(url, str):
+                url = url.encode('utf-8', errors='ignore').decode('utf-8')
+            
             response = self.session.request(
                 method=method,
                 url=url,
@@ -78,6 +85,9 @@ class Scanner:
                 verify=False  # Disable SSL verification for testing
             )
             return response
+        except UnicodeEncodeError as e:
+            self.log(f"Unicode encoding error for {url}: {str(e)}", 'ERROR')
+            return None
         except requests.exceptions.RequestException as e:
             self.log(f"Request failed for {url}: {str(e)}", 'ERROR')
             return None
@@ -175,13 +185,26 @@ class Scanner:
         if not self.test_headers:
             return vulnerabilities
         
-        # Headers to test
+        # Headers to test (expanded for real-world scenarios)
         test_headers = [
             'X-Redirect-To',
-            'X-Forward-To',
+            'X-Forward-To', 
+            'X-Forwarded-Host',
+            'X-Forwarded-For',
+            'X-Real-IP',
             'Location',
             'Referer',
-            'Origin'
+            'Origin',
+            'Host',
+            'X-Original-Host',
+            'X-Host',
+            'Forwarded',
+            'Via',
+            'X-Forwarded-Proto',
+            'X-Forwarded-Port',
+            'X-Custom-Redirect',
+            'X-Return-To',
+            'X-Continue-To'
         ]
         
         for header_name in test_headers:
@@ -211,6 +234,89 @@ class Scanner:
         
         return vulnerabilities
     
+    def test_advanced_scenarios(self, url, payload):
+        """Test advanced real-world scenarios"""
+        vulnerabilities = []
+        
+        # Test for chain redirects
+        chain_vulns = self.test_chain_redirects(url, payload)
+        vulnerabilities.extend(chain_vulns)
+        
+        # Test for OAuth scenarios
+        oauth_vulns = self.test_oauth_scenarios(url, payload)
+        vulnerabilities.extend(oauth_vulns)
+        
+        # Test for enterprise scenarios
+        enterprise_vulns = self.test_enterprise_scenarios(url, payload)
+        vulnerabilities.extend(enterprise_vulns)
+        
+        return vulnerabilities
+    
+    def test_chain_redirects(self, url, payload):
+        """Test for chain redirect vulnerabilities"""
+        vulnerabilities = []
+        
+        # Look for chain redirect patterns
+        chain_params = ['first', 'second', 'third', 'chain', 'hop', 'intermediate']
+        
+        for param in chain_params:
+            if param in url.lower():
+                # Test the chain redirect
+                test_vuln = self.test_url_parameter(url, param, payload)
+                for vuln in test_vuln:
+                    vuln['method'] = 'Chain Redirect'
+                    vuln['severity'] = 'High'
+                    vulnerabilities.extend([vuln])
+        
+        return vulnerabilities
+    
+    def test_oauth_scenarios(self, url, payload):
+        """Test OAuth-specific vulnerabilities"""
+        vulnerabilities = []
+        
+        # OAuth endpoints and parameters
+        oauth_indicators = ['oauth', 'authorize', 'redirect_uri', 'client_id', 'response_type']
+        
+        if any(indicator in url.lower() for indicator in oauth_indicators):
+            # Test OAuth redirect_uri parameter specifically
+            oauth_params = ['redirect_uri', 'callback_url', 'return_url', 'state']
+            
+            for param in oauth_params:
+                test_vuln = self.test_url_parameter(url, param, payload)
+                for vuln in test_vuln:
+                    vuln['method'] = 'OAuth Redirect'
+                    vuln['severity'] = 'Critical'  # OAuth vulnerabilities are often critical
+                    vulnerabilities.extend([vuln])
+        
+        return vulnerabilities
+    
+    def test_enterprise_scenarios(self, url, payload):
+        """Test enterprise application scenarios"""
+        vulnerabilities = []
+        
+        # Enterprise application indicators
+        enterprise_indicators = [
+            'grafana', 'jenkins', 'gitlab', 'github', 'jira', 'confluence',
+            'admin', 'dashboard', 'login', 'sso', 'saml', 'ldap',
+            'payment', 'checkout', 'success', 'confirm', 'verify'
+        ]
+        
+        if any(indicator in url.lower() for indicator in enterprise_indicators):
+            # Test enterprise-specific parameters
+            enterprise_params = [
+                'returnTo', 'return_to', 'success_url', 'cancel_url',
+                'confirm_url', 'verify_url', 'next_page', 'continue_to'
+            ]
+            
+            for param in enterprise_params:
+                test_vuln = self.test_url_parameter(url, param, payload)
+                for vuln in test_vuln:
+                    vuln['method'] = 'Enterprise Application'
+                    vuln['severity'] = 'High'
+                    vulnerabilities.extend([vuln])
+        
+        return vulnerabilities
+    
     def scan_single_url(self, url):
         """Scan a single URL for open redirect vulnerabilities"""
         self.log(f"Scanning: {url}", 'INFO', Fore.CYAN)
@@ -237,6 +343,10 @@ class Scanner:
                 # Test header injection
                 header_vulns = self.test_header_injection(url, payload)
                 vulnerabilities.extend(header_vulns)
+                
+                # Test advanced real-world scenarios
+                advanced_vulns = self.test_advanced_scenarios(url, payload)
+                vulnerabilities.extend(advanced_vulns)
                 
                 # Apply delay if configured
                 if self.delay > 0:
