@@ -28,7 +28,7 @@ class OutputFormatter:
         lines.append(f"Parameter: {vuln['parameter']}")
         lines.append(f"Method: {vuln['method']}")
         lines.append(f"Payload: {vuln['payload']}")
-        lines.append(f"Redirect To: {vuln['location_header']}")
+        lines.append(f"Redirect To: {vuln.get('final_location', 'N/A')}")
         lines.append(f"Status Code: {vuln['status_code']}")
         lines.append(f"Severity: {vuln['severity']}")
         
