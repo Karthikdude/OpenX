@@ -28,8 +28,8 @@ def print_banner():
  ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═══╝╚═╝  ╚═╝
 {Style.RESET_ALL}
 {Fore.YELLOW}Advanced Open Redirect Vulnerability Scanner v1.0{Style.RESET_ALL}
-{Fore.GREEN}Author: Security Research Team{Style.RESET_ALL}
-{Fore.BLUE}https://github.com/security/openx{Style.RESET_ALL}
+{Fore.GREEN}Author: Karthik S Sathyan{Style.RESET_ALL}
+{Fore.BLUE}https://github.com/Karthikdude/openx{Style.RESET_ALL}
 """
     print(banner)
 
