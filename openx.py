@@ -96,7 +96,7 @@ Examples:
     # Display options
     parser.add_argument('--status-codes', action='store_true',
                        help='Display HTTP status codes')
-    parser.add_argument('--insecure', '-k', action='store_true',
+    parser.add_argument('--insecure', '-i', action='store_true',
                        help='Disable SSL certificate verification')
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='Verbose output with detailed information')
