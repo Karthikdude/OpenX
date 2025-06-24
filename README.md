@@ -1,32 +1,53 @@
 # OpenX - Advanced Open Redirect Vulnerability Scanner & Testing Lab
 
-A comprehensive production-grade security testing suite consisting of:
+[![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://python.org)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Vulnerabilities Detected](https://img.shields.io/badge/vulnerabilities-100%2B-red.svg)](https://github.com/Karthikdude/openx)
 
-1. **OpenX Scanner** - Advanced open redirect vulnerability scanner for real-world penetration testing
-2. **Flask Testing Lab** - Educational environment for testing and validating open redirect vulnerabilities
+**OpenX** is a cutting-edge, production-grade cybersecurity tool designed for detecting open redirect vulnerabilities in web applications. Built with insights from 2025 bug bounty research and real-world attack scenarios, OpenX combines sophisticated bypass techniques with an educational testing environment to provide comprehensive security assessment capabilities.
 
-## 🚀 Features
+## 🎯 Project Overview
+
+This repository contains two main components:
+
+1. **OpenX Scanner** - A powerful command-line vulnerability scanner
+2. **Flask Testing Lab** - An educational web application with intentionally vulnerable endpoints
+
+The project serves both security professionals conducting penetration tests and students learning about web application security vulnerabilities.
+
+## ✨ Key Features
 
 ### OpenX Scanner
-- **Advanced Payload Management** - 100+ built-in payloads with encoding variations
-- **Multi-threaded Scanning** - Configurable concurrent testing
-- **External Tool Integration** - Support for `gau` and `waybackurls`
-- **Intelligent Detection** - Multiple detection methods (HTTP redirects, JavaScript, Meta refresh)
-- **Bypass Techniques** - Domain validation bypasses, protocol manipulation, encoding variations
-- **Comprehensive Reporting** - JSON, CSV, and TXT output formats
-- **Header Injection Testing** - Test for header-based redirect vulnerabilities
-- **Real-world Evasion** - Unicode bypasses, CRLF injection, subdomain confusion
+- **🚀 Advanced Detection**: 100+ sophisticated payload variations including 2025 research findings
+- **⚡ Multi-threaded Performance**: Configurable concurrency for optimal scanning speed
+- **🔍 Real-World Scenarios**: Detects OAuth, enterprise applications, payment gateway vulnerabilities
+- **🛡️ Bypass Techniques**: Path traversal, header injection, encoding bypasses, CSRF chaining
+- **📊 Multiple Outputs**: JSON, CSV, TXT reporting formats
+- **🔗 External Integration**: Support for `gau` and `waybackurls` URL discovery tools
+- **🎯 Smart Detection**: Automatic recognition of CVE-2025-4123 style vulnerabilities
 
 ### Flask Testing Lab
-- **13 Vulnerability Categories** - Basic, Encoding, Protocol, Bypass, Header, Client-side
-- **Interactive Testing Interface** - Real-time vulnerability testing with visual feedback
-- **Educational Content** - Detailed explanations of each vulnerability type
-- **Realistic Scenarios** - Mimics real-world application patterns
-- **Comprehensive Coverage** - Multiple parameter variations and bypass techniques
-- **API Integration** - RESTful API for automated testing
+- **📚 Educational Platform**: 35+ vulnerable endpoints across multiple categories
+- **🌐 Interactive Dashboard**: Web-based testing interface with real-time results
+- **🔄 Live Testing**: JavaScript-powered payload testing and result tracking
+- **📱 Responsive Design**: Bootstrap-based interface for all devices
+- **🎓 Learning Categories**: Basic, Advanced, OAuth, Enterprise, and Bypass techniques
 
-## 📋 Requirements
+## 🛠️ Installation Guide
 
-### OpenX Scanner
+### Prerequisites
+- Python 3.8 or higher
+- pip package manager
+- Git (for cloning repository)
+
+### Method 1: Quick Installation
 ```bash
-pip install requests colorama urllib3
+# Clone the repository
+git clone https://github.com/Karthikdude/openx.git
+cd openx
+
+# Install dependencies
+pip install flask colorama requests urllib3
+
+# Run OpenX scanner
+python openx.py --help

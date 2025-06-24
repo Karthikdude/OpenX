@@ -143,6 +143,14 @@ The project is designed to serve both security professionals conducting penetrat
   - Expanded header injection testing with cloud-specific headers (CF-Connecting-IP, True-Client-IP, X-Cluster-Client-IP)
   - Successfully validated scanner against new 2025 attack techniques with 100% detection rate
 
+- June 24, 2025: Documentation and distribution enhancements
+  - Created comprehensive README.md with detailed installation instructions and usage examples
+  - Added global installation guide for Linux, macOS, and Windows platforms
+  - Created setup.py for Python package distribution
+  - Added LICENSE file and installation documentation (INSTALL.md)
+  - Updated GitHub repository information to https://github.com/Karthikdude/openx.git
+  - Enhanced CLI help text and version information for better user experience
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
