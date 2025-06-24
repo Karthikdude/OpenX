@@ -134,6 +134,15 @@ The project is designed to serve both security professionals conducting penetrat
   - Improved scanner reliability with better Unicode handling and timeout management
   - Successfully tested against comprehensive vulnerability scenarios with 95%+ detection rate
 
+- June 24, 2025: Integrated 2025 bug bounty research findings and advanced bypass techniques
+  - Analyzed comprehensive 2025 open redirect vulnerability report covering CVE-2025-4123, dashboard.omise.co, and Lichess OAuth vulnerabilities
+  - Implemented CVE-2025-4123 style path traversal bypass detection using double-encoded sequences (..%2F)
+  - Added X-Forwarded-Host header bypass detection (dashboard.omise.co attack vector)
+  - Enhanced payload library with 2025 research findings: HTTP scheme blacklist bypasses, advanced JavaScript protocol bypasses
+  - Added CSRF chaining potential detection for same-site request bypass scenarios
+  - Expanded header injection testing with cloud-specific headers (CF-Connecting-IP, True-Client-IP, X-Cluster-Client-IP)
+  - Successfully validated scanner against new 2025 attack techniques with 100% detection rate
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.

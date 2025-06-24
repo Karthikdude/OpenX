@@ -1,0 +1,459 @@
+Analysis of Open Redirect Vulnerabilities in Public Disclosures and Bug Bounty Writeups (2025)
+1. Executive Summary
+Open Redirect vulnerabilities, historically often perceived as low-impact or primarily a phishing concern, have demonstrated an evolving significance in 2025. Recent analyses and real-world exploitations highlight their critical role as foundational elements in complex attack chains, leading to severe consequences beyond simple redirection. This report synthesizes publicly available bug bounty writeups and disclosed reports from 2025 to provide a detailed understanding of how these vulnerabilities are discovered, exploited, and escalated. The prevalence of open redirects across diverse software environments, from enterprise systems to third-party components and even desktop clients, underscores the necessity for a re-evaluation of their risk assessment. For security practitioners, understanding the sophisticated bypass techniques and the potential for chaining open redirects with flaws like Cross-Site Scripting (XSS), Cross-Site Request Forgery (CSRF), and Server-Side Request Forgery (SSRF) is paramount for effective discovery, robust remediation, and accurate risk prioritization.
+
+The long-standing perception that open redirects are low-impact, often dismissed by some bug bounty programs and major technology companies, is being challenged by contemporary research and incidents. For instance, Google has previously indicated that it prioritizes technologies for phishing detection over considering open redirects as a primary vulnerability. However, the "Do (Not) Follow the White Rabbit: Challenging the Myth of Harmless Open Redirection" paper presented at NDSS 2025 explicitly re-assesses this viewpoint. This research reveals a crucial shift: over 11.5% of identified open redirect vulnerabilities across 38% of affected sites could be escalated to more critical threats, including XSS, CSRF, and information leakage. This academic finding is corroborated by real-world incidents, such as the high-severity Grafana CVE-2025-4123, where an open redirect served as a pivotal step in a chain leading to stored XSS and full-read SSRF, ultimately exposing cloud credentials. This convergence of research and practical exploitation underscores a significant re-evaluation of open redirects, recognizing them not merely as simple phishing aids but as critical initial access vectors or integral components within sophisticated, multi-stage attack chains. This necessitates a re-evaluation of risk assessments and remediation strategies for organizations and emphasizes for security researchers the importance of demonstrating the full impact of an open redirect by actively seeking chaining opportunities.   
+
+2. Overview of Open Redirect Vulnerabilities in 2025
+The landscape of Open Redirect vulnerabilities in 2025 reflects a persistent challenge across various application types and contexts, as evidenced by both bug bounty disclosures and official CVEs.
+
+2.1. Real-World Examples from Bug Bounty Programs (2025)
+Several notable open redirect vulnerabilities were reported and publicly disclosed on platforms like HackerOne and Bugcrowd in 2025, providing valuable insights into their manifestation and impact.
+
+A prominent example is the Lichess OAuth Flow Vulnerability (HackerOne Report #3099816), submitted on April 18, 2025. This report detailed an open redirect flaw within the OAuth authorization process on    
+
+lichess4545.com. An attacker could manipulate the redirect_uri parameter to redirect users to an arbitrary external domain, such as example.com, immediately after a legitimate login. The primary impact cited was the potential for phishing, the theft of OAuth tokens (when combined with other attacks), or deceiving users into believing they were interacting with a trusted site. The fact that the redirection occurred post-authentication significantly enhanced the credibility of any subsequent phishing attempt.   
+
+A key point of contention in the Lichess report revolved around the effectiveness of warning screens. Lichess staff initially deemed the issue a duplicate and not an "outright vulnerability" due to the presence of a warning/confirmation screen displayed before redirection. However, the reporter, delsec_, effectively argued that such warnings were insufficient. The reporter highlighted that subtle domain variations, a technique known as typosquatting (e.g.,    
+
+lichess45455.com or lichess-4545.com), combined with the context of a legitimate login and OAuth flow, could easily trick average users. The argument posited that users, accustomed to familiar branding and the standard flow, would likely not scrutinize the URL closely, rendering the warning ineffective. This incident underscores a critical gap in security design: technical mitigations like warning screens often fail to account for human psychology and sophisticated social engineering tactics. User trust in branding and the perceived legitimacy of a multi-step process can override explicit warnings, indicating that relying solely on user warnings for open redirects is an insufficient defense. Robust prevention must involve strict server-side validation, preferably whitelisting, to prevent arbitrary redirection.   
+
+Beyond Lichess, other notable open redirect instances from 2025 bug bounty programs include:
+
+An open redirect in the marketing.hostinger.com subdomain, which facilitated one-click account takeover by enabling the theft of authentication tokens. This demonstrates a direct path from open redirect to session compromise.   
+
+A vulnerability in crm.na1.insightly.com where manipulating the returnUrl parameter during login could redirect users to a malicious website, potentially leading to account takeover.   
+
+The LinkedIn Premium support chat interface was found to allow injection of clickable HTML links, which could lead to phishing or redirection attacks targeting LinkedIn support staff. This illustrates open redirects appearing in less conventional contexts, such as chat interfaces.   
+
+An open redirect in the Office365 Autodiscover service of the rockstargames.com domain, which was subsequently resolved through Microsoft updates and internal configuration changes.   
+
+An open redirect on dashboard.omise.co that was exploited by abusing the X-Forwarded-Host header, showcasing advanced header manipulation techniques.   
+
+A vulnerability in Nextcloud's user_oidc app, allowing redirection of users to malicious sites during the login process.   
+
+The consistent pattern observed across the Lichess, Hostinger, Insightly, and Nextcloud examples, all involving open redirects within OAuth, login, or authentication/authorization-related flows, highlights a significant trend. These examples indicate that authentication and authorization mechanisms, particularly those handling user redirection post-login or during OAuth handshakes, remain high-value and frequently targeted areas for open redirect vulnerabilities. These critical flows involve user trust, session management, and often sensitive tokens. This reinforces the strategic importance for security testers to thoroughly scrutinize all authentication, authorization, and single sign-on (SSO) processes for open redirect vulnerabilities. For developers, it means implementing the most stringent validation, preferably explicit whitelisting, for all redirect parameters within these critical security contexts, as the impact can directly lead to account compromise or widespread phishing.   
+
+2.2. Publicly Disclosed CVEs (2025)
+Several significant CVEs related to open redirects were disclosed in 2025, providing further technical details and broader implications.
+
+CVE-2025-4123 (Grafana): A High-Impact Chaining Example (Open Redirect + Stored XSS + SSRF)
+Disclosed on April 26, 2025, CVE-2025-4123 is a high-severity vulnerability found in Grafana's URL-sanitization logic for custom frontend-plugin downloads. Attackers could exploit this by smuggling a double-encoded path-traversal sequence (   
+
+..%2F) into the /redirect endpoint, forcing Grafana to redirect the victim's browser to an external URL under attacker control.   
+
+This open redirect served as the initial step in a powerful exploitation chain:
+
+Open Redirect Bypass: The path traversal combined with the open redirect successfully bypassed Grafana's internal allow-list.   
+
+Stored XSS: By hosting a specially crafted plugin manifest on the attacker-controlled site, arbitrary JavaScript could be injected and executed within the trusted grafana-origin context, leading to classic stored XSS. This was particularly effective if allow_loading_unsigned_plugins = true was enabled, a common setting in lab or demo environments.   
+
+SSRF Escalation: When chained with the popular Grafana Image Renderer plugin, the stored XSS could escalate to a full-read Server-Side Request Forgery (SSRF). This allowed attackers to proxy arbitrary URLs, including internal REST endpoints and cloud IAM credentials (e.g., accessing AWS metadata services at http://169.254.169.254/latest/meta-data/iam/security-credentials), resulting in sensitive data exposure.   
+
+The combined impact of this chain was severe, encompassing session hijacking, account takeover, privilege escalation within Grafana, read-anywhere SSRF, telemetry exfiltration, and the ability to poison monitoring panels. Mitigation involved patching to Grafana 12.0.0-security-01, disabling anonymous access, implementing a strict Content-Security-Policy (CSP), removing or updating the Image Renderer plugin if unused, restricting outbound egress, and actively hunting for Indicators of Compromise (IOCs).   
+
+CVE-2025-4123 clearly demonstrates an open redirect, facilitated by a path traversal bypass, as the initial vulnerability that enables a stored XSS, which then further escalates to a full-read SSRF. The open redirect functions as the gateway, tricking the victim's browser into fetching malicious content from an attacker-controlled site while appearing to originate from or be sanctioned by the trusted Grafana domain. This initial trust bypass is critical. The XSS then leverages the trusted origin context to execute code, and the SSRF is a consequence of that executed code interacting with a specific vulnerable component (the Image Renderer plugin). This case study serves as a definitive example challenging the notion of harmless open redirection. It unequivocally proves that open redirects are not isolated, low-impact bugs. Instead, they can be foundational components in sophisticated, multi-stage attacks that lead to severe consequences, including cloud environment compromise and sensitive data exfiltration. This reinforces the findings of the NDSS 2025 paper  and highlights the critical importance of understanding how seemingly disparate vulnerabilities can be chained to achieve maximum impact.   
+
+CVE-2025-36016 (IBM Process Mining)
+Published on June 21, 2025, this CVE affects IBM Process Mining versions 2.0.1 IF001 and 2.0.1. It is classified under CWE-601, "URL Redirection to Untrusted Site ('Open Redirect')". The vulnerability enables a remote attacker to conduct phishing attacks by persuading a victim to visit a specially crafted website. This would spoof the displayed URL, redirecting the user to a malicious site that appears trusted, potentially leading to sensitive information theft or further attacks. The CVSS v3.1 Base Score for this vulnerability is 6.8 (Medium). The existence of an open redirect CVE in enterprise-level software like IBM Process Mining demonstrates that these vulnerabilities are not confined to consumer-facing web applications or smaller projects. Even mature, widely-used enterprise software can be susceptible to this classic vulnerability type, underscoring its broad pervasiveness across different software ecosystems.   
+
+CVE-2025-49868 (FunnelKit Automation By Autonami)
+Published on June 17, 2025, this CVE describes a CWE-601 vulnerability in FunnelKit Automation By Autonami, a WordPress plugin, affecting versions up to 3.6.0. The vulnerability allows for phishing attacks , with a CVSS v3.1 Base Score of 4.7 (Medium). The discovery of an open redirect in a WordPress plugin highlights the common occurrence of these vulnerabilities within third-party components, libraries, and plugin ecosystems. These components are frequently integrated into larger applications, and their security posture can directly impact the overall security of the host application.   
+
+CVE-2025-2068 (FileZ Client)
+An open redirect vulnerability was reported in the FileZ client, also classified as CWE-601. The impact of this vulnerability could lead to information disclosure if a crafted URL is visited by a local user. The reporting of an open redirect in a desktop client application like FileZ demonstrates that these vulnerabilities are not exclusive to web applications. Any software that processes user-controlled input to construct and perform a redirection, such as opening a URL in a browser or navigating within the application, can be susceptible, broadening the attack surface beyond traditional web contexts.   
+
+Table 1: Summary of Key 2025 Open Redirect Examples
+Platform/CVE ID
+
+Affected Product/Service
+
+Vulnerable Parameter/Endpoint
+
+Primary Impact
+
+Date of Disclosure/Report
+
+Severity (CVSS Base Score)
+
+HackerOne #3099816
+
+Lichess
+
+redirect_uri (OAuth flow)
+
+Phishing, OAuth token theft
+
+April 18, 2025
+
+Not provided
+
+CVE-2025-4123
+
+Grafana
+
+/redirect endpoint with url parameter
+
+Stored XSS, SSRF, Account Takeover, Data Exfil.
+
+April 26, 2025
+
+High
+
+CVE-2025-36016
+
+IBM Process Mining
+
+Unspecified (implied by CWE-601)
+
+Phishing, Sensitive Information Theft
+
+June 21, 2025
+
+6.8 (Medium)
+
+CVE-2025-49868
+
+FunnelKit Automation By Autonami
+
+Unspecified (implied by CWE-601)
+
+Phishing
+
+June 17, 2025
+
+4.7 (Medium)
+
+CVE-2025-2068
+
+FileZ Client
+
+Unspecified (implied by CWE-601)
+
+Information Disclosure
+
+Reported 2025
+
+Unspecified
+
+HackerOne (Hostinger)
+
+marketing.hostinger.com
+
+Whitelisted redirect functionality
+
+One-click Account Takeover (Auth token theft)
+
+Reported 2025
+
+Not provided
+
+HackerOne (Insightly)
+
+crm.na1.insightly.com
+
+returnUrl
+
+Account Takeover
+
+Reported 2025
+
+Not provided
+
+HackerOne (Omise.co)
+
+dashboard.omise.co
+
+X-Forwarded-Host header
+
+Open Redirect Abuse
+
+Reported 2025
+
+Not provided
+
+
+Export to Sheets
+3. Discovery Techniques for Open Redirects
+Effective discovery of open redirect vulnerabilities requires a systematic approach, beginning with thorough reconnaissance to identify potential redirect points and employing a combination of manual and automated tools for testing.
+
+3.1. Reconnaissance and Target Identification
+The initial phase of identifying open redirects involves mapping the application's functionality to pinpoint areas where redirection mechanisms are likely to be present.
+
+Open redirect vulnerabilities commonly manifest through specific URL parameters that dictate redirection behavior. Security researchers should actively seek parameters such as redirect_uri, returnUrl, url, next, continue, destination, callback, goto, path, and target. The NDSS 2025 paper emphasizes that open redirects fundamentally arise when web applications utilize untrusted inputs, typically values within URL query parameters, to determine the destination for user redirection. This underscores the importance of scrutinizing any parameter that appears to control navigation.   
+
+Strategic areas within a web application are consistently high-priority targets for open redirect discovery:
+
+Authentication and Authorization Flows: This category includes sign-in, registration, and sign-out pages, as well as OAuth and single sign-on (SSO) processes. These flows frequently employ redirect parameters to return users to their original or intended page after successful authentication or authorization. The Lichess OAuth vulnerability from 2025 serves as a prime example.   
+
+Password Reset Mechanisms: Inspecting the links generated for password resets is crucial, as they often contain redirect parameters that could be manipulated.   
+
+Email Verification Links: Similar to password resets, email verification links frequently embed redirect parameters.   
+
+Error Pages: Applications sometimes redirect users to a specific page after encountering an error; these redirect parameters could be exploitable.   
+
+Multi-Step Actions and Workflows: Any complex workflow within the application that involves multiple steps and subsequent redirection, such as after completing a purchase or updating profile settings, presents potential targets.   
+
+Profile Account Pages: Redirects often occur after users update their profile information.   
+
+Content Optimization/Device-Based Redirects: While less common, some applications redirect users based on their device or for content optimization, which could also harbor vulnerabilities.   
+
+The comprehensive list of application areas to target, such as sign-in/register pages, sign-out routes, password resets, profile pages, email verification links, error pages, and multi-step actions , indicates a behavioral approach to reconnaissance. This goes beyond merely looking for specific URL parameters. It emphasizes systematically mapping out common user journeys and interactions within the application to identify every point where a user's flow might be interrupted or altered, as these are natural points for redirection. This strategic focus increases the efficiency and effectiveness of discovery by targeting areas where open redirects are most likely to exist and have impact.   
+
+3.2. Tools and Methodologies for Discovery
+Once potential redirect points are identified, a combination of manual and automated tools can be employed for effective discovery.
+
+Manual Testing with Browser Developer Tools and Intercepting Proxies (Burp Suite, OWASP ZAP):
+Intercepting proxies like Burp Suite and OWASP ZAP are fundamental for manual testing. These tools allow security professionals to intercept and manipulate HTTP requests, observe server responses (particularly the    
+
+Location HTTP response header and 3XX status codes like 301, 302, 307 for server-side redirects), and identify parameters that control redirection. Browser developer tools are crucial for analyzing client-side (DOM-based) redirects, which may not involve a    
+
+Location header but rather JavaScript (window.location.href) or HTML meta tags. Testers can manipulate URLs directly in the browser and observe the resulting behavior.   
+
+The advocacy for both manual testing with tools like Burp Suite and OWASP ZAP  and the emergence of sophisticated automated scanners like OpenRedirector, Openredirectscan, and OpenRediWrecked  points to a synergistic relationship between these approaches. Automation provides speed and scale, allowing for broad initial parameter identification and the application of numerous payloads. Manual testing, however, offers depth, enabling contextual understanding, the identification of subtle bypasses (as seen in the Lichess case where the reporter had to verify the absence of a warning screen during testing ), and the ability to verify true impact. The most effective methodology for open redirect discovery is a combination of both. Security professionals should integrate automated tools into their workflow for initial enumeration and large-scale fuzzing, but always follow up with targeted manual analysis using proxies to confirm findings, understand the redirect mechanism (server-side vs. client-side), and explore complex chaining opportunities. This hybrid approach maximizes both coverage and accuracy in vulnerability assessment.   
+
+Leveraging Google Dorking for Initial Identification:
+Google Dorks, which are targeted search queries, can be used to find publicly indexed URLs that might indicate redirect functionality. Common dorks include site:example.com inurl:redirect= or site:example.com inurl:url=. The NDSS 2025 paper highlights the utility of Google dorking as a method for mining vulnerabilities, allowing researchers to expand their search to various datasets and identify open redirect variants. This suggests that dorks can be tailored to specific vulnerability indicators.   
+
+Utilizing Automated Scanning Tools:
+
+OpenRedirector (0xKayala/OpenRedirector): This automation tool combines ParamSpider for mining parameters from web archives and OpenRedireX for fuzzing open redirect issues, streamlining the scanning process.   
+
+Openredirectscan (ManShum812/Openredirectscan): A Go-based script designed to scan URLs for open redirect vulnerabilities, specifically checking if URLs redirect to a predefined "evil.com." It supports concurrency for efficiency and provides color-coded output.   
+
+OpenRediWrecked (blackhatethicalhacking/OpenRediWrecked): Described as a sophisticated tool for detecting and exploiting open redirect vulnerabilities. It leverages sed for parameter cleaning and injects a selection of carefully crafted payloads, including encoding techniques, to bypass filters. It is designed for Red Teams and Bug Bounty Hunters.   
+
+General Vulnerability Scanners: Tools like OWASP ZAP, Nikto, and commercial solutions such as Invicti and Acunetix also include capabilities for detecting open redirects.   
+
+The features of newer tools like OpenRediWrecked, which explicitly highlight their use of "carefully crafted payloads with encoding techniques" and their design to "bypass filters" , along with OpenRedirector's integration of    
+
+ParamSpider for mining parameters from web archives , indicate a significant evolution in automated open redirect discovery. This suggests that the latest automated tools are incorporating more advanced, context-aware, and encoding-heavy bypass techniques directly into their automation logic. They are also leveraging wider data sources for initial target identification. For security professionals, leveraging these more sophisticated automated tools can significantly improve the chances of finding elusive open redirects that might evade simpler scanners. For developers and security teams, this serves as a warning that basic string matching or partial URL parsing for validation is no longer sufficient; attackers have automated the application of complex bypasses, necessitating robust, comprehensive validation mechanisms.   
+
+3.3. Verification of Open Redirect Vulnerabilities
+Once a potential open redirect is identified, rigorous verification is essential to confirm its exploitability and understand its nature.
+
+Confirming Arbitrary Redirection and Distinguishing Redirect Types:
+For server-side redirects, verification involves confirming that the application responds with an HTTP 3XX status code (e.g., 301, 302, 307) and a Location HTTP response header pointing to the arbitrary, attacker-controlled URL provided in the input. If the    
+
+Location header is absent but the browser still redirects after a short delay, it typically indicates a client-side redirect, often initiated by JavaScript (window.location.href) or HTML meta tags. Tools like PortSwigger's DOMInvador and Untrusted Types can be invaluable for tracing the vulnerable JavaScript code that passes arbitrary input to a DOM sink. The NDSS 2025 paper emphasizes that after static analysis, conducting run-time monitoring tests is crucial to definitively confirm the presence of an open redirect vulnerability. This highlights that theoretical identification must always be followed by practical verification.   
+
+The explicit differentiation between server-side and client-side redirects, along with their distinct identification methods (3XX HTTP status codes and Location headers for server-side; absence of Location header, delay, and JavaScript for client-side), as detailed in the Intigriti guide , indicates the criticality of distinguishing redirect mechanisms for accurate verification and exploitation. Proper verification extends beyond simply observing a redirect; it requires understanding the underlying mechanism by which the redirect occurs. This distinction is critical because it directly influences the types of payloads that will be effective (e.g.,    
+
+javascript: scheme payloads are typically only effective for DOM-based sinks) and dictates the potential for chaining with other vulnerabilities (e.g., DOM-based XSS is a direct escalation path for client-side redirects). Testers must develop the analytical skills to not just confirm a redirect but to analyze the full HTTP response and client-side behavior. This detailed understanding is essential for crafting effective proof-of-concepts, identifying the most impactful escalation paths, and accurately communicating the vulnerability's nature to developers for precise remediation.
+
+4. Common Patterns, Bypass Techniques, and Escalation
+The true danger of open redirects often lies in their ability to serve as a foundational component for escalating to more severe vulnerabilities. The NDSS 2025 paper strongly supports this, finding that over 11.5% of open redirect vulnerabilities could be escalated. Attackers continuously innovate to bypass validation logic designed to prevent arbitrary redirection. These techniques often exploit parsing inconsistencies or specific URL components.   
+
+4.1. Bypassing Weak URL Validations
+Attackers employ sophisticated techniques to circumvent scheme, authority, and domain filters, often by exploiting parsing inconsistencies or specific URL components.
+
+Techniques for circumventing common filters include:
+
+Bypass HTTP Scheme Blacklist: Payloads such as //attacker.com (protocol-relative URL), /%0A/attacker.com (newline character), /%0D/attacker.com (carriage return), /%09/attacker.com (tab), +/attacker.com, ///attacker.com, and \\attacker.com can bypass filters that explicitly block http:// or https://. Variations like    
+
+http:example.com or https:example.com can also be effective.   
+
+Bypass Weak Domain Validation: Attackers use various tricks to make a malicious domain appear legitimate or to embed it within an allowed domain. Examples include https://example.com@attacker.com (Userinfo Bypass, where @ can trick parsers), https://example.com.attacker.com (Subdomain Bypass), https://attacker.com/example.com (Path Bypass), https://attacker.com?example.com (Query Bypass), and https://attacker.com%23example.com (Fragment Bypass). Encoding variations like null bytes (   
+
+%00), newlines (%0A), carriage returns (%0D), tabs (%09), and non-ASCII characters (e.g., ° in https://example.com°attacker.com) can confuse parsing logic.   
+
+Path Traversal: As demonstrated by CVE-2025-4123 in Grafana, smuggling a double-encoded path-traversal sequence (..%2F) into a redirect endpoint can bypass URL sanitization and force redirection to an external URL. This highlights the importance of robust path normalization.   
+
+The extensive list of diverse bypass payloads  covering scheme, authority, domain, path, query, and fragment manipulation, coupled with the Grafana CVE's exploitation of double-encoding and path traversal , showcases a wide array of techniques. This pattern reveals an ongoing "arms race" between developers implementing robust URL validation and attackers continuously discovering and exploiting subtle inconsistencies in how different components (browsers, web servers, application frameworks, proxies) parse and interpret URLs, especially when various encoding schemes are applied. Attackers systematically test every part of the URL structure and every encoding permutation. This implies that blacklisting specific characters or patterns, or performing partial URL validation, is inherently prone to bypass. Robust prevention requires a strict    
+
+whitelisting approach for entire trusted domains and paths, coupled with consistent and secure URL parsing across all layers of the application stack (frontend, backend, load balancers, proxies). For testers, systematically applying these diverse bypass techniques is crucial for finding elusive vulnerabilities.
+
+4.2. Chaining Open Redirects for Higher Impact
+The true danger of open redirects often lies in their ability to serve as a foundational component for escalating to more severe vulnerabilities. The NDSS 2025 paper strongly supports this, finding that over 11.5% of open redirect vulnerabilities could be escalated.   
+
+Escalation to Cross-Site Scripting (XSS):
+If a client-side redirect (DOM-based) passes user input unsafely to a DOM sink (e.g., window.location.href), an attacker can inject javascript:alert(document.cookie) or similar payloads to execute arbitrary JavaScript in the victim's browser context. Even if    
+
+javascript: is filtered, various bypasses exist, including case variations (JavaScript:, JAVASCRIPT:), URL-encoded spaces (ja%20vascri%20pt:), newlines (jav%0Aascri%0Apt:), carriage returns (jav%0Dascri%0Dpt:), tabs (jav%09ascri%09pt:), and more advanced weak regex pattern bypasses like %19javascript:alert(1) or javascript://%0Aalert(1). CVE-2025-4123 (Grafana) provides a compelling example of stored XSS, where an open redirect (via path traversal) was used to force the victim's browser to load a malicious plugin manifest from an attacker-controlled site, leading to arbitrary JavaScript execution in the trusted    
+
+grafana-origin context.   
+
+Open redirects can directly lead to DOM-based XSS  and, as demonstrated by the Grafana CVE, stored XSS. The NDSS 2025 paper quantifies this, stating that approximately 9% of open redirects can escalate to DOM-based XSS. The core mechanism here is that the open redirect, even if it eventually sends the user to a malicious site, originates from or leverages the trust of the    
+
+legitimate domain. This "trusted origin" context is then exploited by XSS payloads. For DOM-based XSS, the malicious JavaScript executes within the context of the vulnerable trusted domain. For stored XSS (Grafana), the redirect tricks the trusted application into fetching and rendering malicious content from an external source, which then executes within its trusted context. The true danger of open redirects extends far beyond simple phishing. Their ability to facilitate attacks that rely on a trusted origin makes them a critical precursor for client-side attacks like XSS, which can then lead to severe consequences such as session hijacking, sensitive data exfiltration, defacement, or further client-side compromise. This highlights why open redirects, especially client-side ones, should be taken seriously.
+
+Escalation to Cross-Site Request Forgery (CSRF):
+Open redirects can be chained with certain types of CSRF vulnerabilities, particularly GET-based CSRF. An example demonstrates chaining an open redirect on a /redirect API endpoint with a lack of CSRF protection on a /api/account/profile endpoint to change a user's username and bio simply by visiting a malicious link. The NDSS 2025 paper explicitly confirms client-side CSRF escalation for over 2.4% of open redirects. Crucially, it notes that client-side open redirects trigger top-level, same-site requests, which can bypass    
+
+SameSite cookie protections that would otherwise prevent cross-site GET requests.   
+
+The NDSS 2025 paper explicitly highlights that client-side open redirects can trigger "top-level, same-site requests," which allows them to bypass SameSite cookie protections for CSRF. Modern browsers and frameworks increasingly rely on the    
+
+SameSite attribute for cookies to prevent CSRF attacks by restricting when cookies are sent with cross-site requests. However, if an open redirect can be initiated from the same site (even if it eventually sends the user to a malicious site), it might trick the browser into treating the subsequent request as a "same-site" navigation, thus attaching cookies that would otherwise be protected. This allows the forged request to be authenticated. This reveals a sophisticated attack vector where open redirects are not merely used for phishing but can actively undermine modern web security mechanisms designed to prevent request forgery. Developers should be aware that relying solely on SameSite attributes might not be sufficient; all state-changing operations must be protected with robust, cryptographically strong anti-CSRF tokens, regardless of the perceived "same-site" origin.
+
+Escalation to Server-Side Request Forgery (SSRF):
+As vividly demonstrated by CVE-2025-4123 in Grafana, an open redirect can be a pivotal step in escalating to a full-read SSRF. When chained with vulnerable components, such as the Image Renderer plugin, the open redirect allows an attacker to control what the    
+
+server requests, enabling access to internal resources, cloud metadata services (e.g., http://169.254.169.254/latest/meta-data/iam/security-credentials for AWS credentials), or other internal REST endpoints. This demonstrates that even if an open redirect primarily affects the client's browser, it can be leveraged to achieve server-side compromise. The open redirect facilitates the initial compromise (e.g., XSS) that then allows the attacker to manipulate the server into making arbitrary requests on their behalf, effectively turning the vulnerable application into a proxy for internal network access.   
+
+Information Leakage and Execution After Redirect (EAR):
+
+Information Leakage: If sensitive information, such as OAuth tokens, session IDs, or authorization codes, is inadvertently included in the redirection URL (e.g., as a query parameter), an attacker exploiting an open redirect can capture this data, leading to sensitive information disclosure.   
+
+Execution After Redirect (EAR): This is a logical flaw where an attacker can ignore the redirect (e.g., by disabling JavaScript in the browser or using an intercepting proxy) and still access sensitive content or perform unauthorized actions that were intended only for authenticated users after the redirect. This occurs if the application does not properly terminate execution after initiating a redirect (e.g., by missing die() or return statements in server-side code). While CVE-2013-1402 is an older example, the underlying principle of insufficient termination remains a relevant vulnerability pattern.   
+
+Both Information Leakage via redirect URLs  and Execution After Redirect (EAR)  are fundamentally logical flaws in how applications handle data and control flow around redirects, rather than complex parsing bypasses. EAR, in particular, has been a known issue for some time. These examples highlight that despite advancements in web security, fundamental logical vulnerabilities and incomplete security implementations (e.g., not properly terminating execution after a redirect) continue to persist. Developers might focus on preventing the redirect itself but overlook the consequences if the redirect is bypassed or if sensitive data is inadvertently exposed during the process. For developers, this underscores the importance of a holistic security review that includes not just input validation but also secure design principles, proper session management, and careful handling of sensitive data throughout the entire application flow. For testers, it means always checking for logical flaws, such as attempting to access content by ignoring redirects, as these can yield significant impact despite appearing simple.   
+
+Table 2: Common Open Redirect Bypass Payloads and Their Targets
+Payload Example
+
+Target Filter/Validation
+
+Description/Effect
+
+//attacker.com
+
+HTTP scheme blacklist
+
+Bypasses explicit http:// or https:// checks by using protocol-relative URL.
+
+/%0A/attacker.com, /%0D/attacker.com, /%09/attacker.com, +/attacker.com, ///attacker.com, \\attacker.com
+
+HTTP scheme blacklist
+
+Exploits character encoding or parsing inconsistencies to bypass scheme checks.
+
+http:example.com, https:example.com
+
+URI authority component (//) blacklist
+
+Bypasses filters specifically looking for double slashes after the scheme.
+
+https://example.com@attacker.com
+
+Weak domain validation
+
+Tricks domain validation by treating the allowed domain as a userinfo component before the malicious domain.
+
+https://example.com.attacker.com
+
+Weak domain validation
+
+Bypasses filters that only check for the allowed domain at the beginning of the string.
+
+https://attacker.com/example.com
+
+Weak domain validation
+
+Treats the allowed domain as a path component on the attacker's domain.
+
+https://attacker.com?example.com, https://attacker.com%23example.com
+
+Weak domain validation
+
+Treats the allowed domain as a query parameter or fragment on the attacker's domain.
+
+https://example.com%00attacker.com, https://example.com%0Aattacker.com, https://example.com%0Dattacker.com, https://example.com%09attacker.com, https://example.com°attacker.com
+
+Weak domain validation (encoding/non-ASCII)
+
+Uses null bytes, newlines, carriage returns, tabs, or non-ASCII characters to confuse parsing logic.
+
+..%2F (double-encoded path traversal)
+
+URL sanitization / path traversal
+
+Bypasses URL normalization logic, allowing redirection to external URLs by escaping directory structures.   
+
+javascript:alert(1), JavaScript:alert(1), JAVASCRIPT:alert(1)
+
+Filtered JavaScript protocol
+
+Executes arbitrary JavaScript in the browser context, typically for DOM-based redirects.   
+
+ja%20vascri%20pt:alert(1), jav%0Aascri%0Apt:alert(1), jav%0Dascri%0Dpt:alert(1), jav%09ascri%09pt:alert(1)
+
+Weak regex patterns for JavaScript protocol
+
+Uses URL-encoded spaces or control characters to bypass regular expression filters.   
+
+%19javascript:alert(1), javascript://%0Aalert(1), javascript://https://example.com%0Aalert(1)
+
+More advanced weak regex pattern bypasses
+
+Exploits subtle regex weaknesses to inject and execute JavaScript.   
+
+5. Practical Advice for Finding Open Redirect Bugs
+Finding open redirect vulnerabilities in real-world web applications requires a structured and persistent approach, combining reconnaissance, systematic testing, and diligent verification.
+
+5.1. Step-by-Step Testing Methodology
+A systematic approach is key to consistently finding open redirect vulnerabilities, especially those with higher impact.
+
+Initial Reconnaissance and Parameter Identification:
+Begin by thoroughly mapping the application's functionality. Identify all user-facing features that involve redirection, such as login/logout, password resets, email verification, multi-step forms, error pages, and profile updates. Look for common redirect parameters like    
+
+url, next, return, redirect_uri, callback, dest, continue, target, and any custom parameters that appear to control navigation. This involves a behavioral reconnaissance approach where the tester systematically maps out common user journeys and interactions within the application to identify every point where a user's flow might be interrupted or altered, as these are natural points for redirection.   
+
+Baseline Testing with Simple Payloads:
+For each identified parameter, test with a simple, known external URL (e.g., https://attacker.com). Observe the HTTP response, specifically looking for 3XX status codes and Location headers for server-side redirects, and analyze browser behavior for client-side redirects. Note any warning screens or default redirects.   
+
+Systematic Bypass Application:
+This is the most critical phase. Iteratively apply the various bypass techniques detailed in Section 4.1 to the identified parameters. This includes:
+
+Encoding Variations: Test URL encoding, double URL encoding, and the use of null bytes (%00), newlines (%0A), carriage returns (%0D), and tabs (%09).   
+
+Path Manipulation: Experiment with path traversal (..%2F), absolute paths (/), and relative paths within the parameter value.   
+
+Scheme Manipulation: For client-side redirects, test variations of the javascript: protocol (e.g., javascript:alert(1), JAVASCRIPT:alert(1)), along with encoded variations and those designed to bypass weak regex patterns (e.g., ja%20vascri%20pt:alert(1), javascript://%0Aalert(1)).   
+
+Domain and Authority Manipulation: Try payloads that trick domain validation, such as https://example.com@attacker.com, https://example.com.attacker.com, https://attacker.com/example.com, and variations using query or fragment components. Also, test bypassing URI authority component blacklists with    
+
+http:example.com or https:example.com.   
+
+Verification and Impact Assessment:
+Confirm the arbitrary redirection by observing the final destination URL. Differentiate between server-side and client-side redirects by analyzing HTTP response headers (3XX status code, Location header) versus client-side behavior (JavaScript, meta tags). For client-side redirects, use browser developer tools or specialized tools like DOMInvador to trace the vulnerable code. Crucially, attempt to chain the open redirect with other vulnerabilities. This includes:   
+
+XSS: If a javascript: payload executes, demonstrate DOM-based XSS. For server-side redirects, consider if the redirect could lead to a stored XSS by tricking the application into fetching malicious content, as seen in Grafana.   
+
+CSRF: Test if the open redirect can facilitate GET-based CSRF by leveraging its ability to trigger same-site requests that bypass SameSite cookie protections.   
+
+SSRF: Investigate if the redirect can be leveraged to make the server request internal resources or cloud metadata endpoints, especially if a vulnerable server-side component is present.   
+
+Information Leakage/EAR: Check if sensitive data is exposed in the redirect URL or if content can be accessed by ignoring the redirect.   
+
+Documentation and Reporting:
+Provide detailed reports with reproducible steps, including the specific URL, affected parameters, browser/OS details, and the perceived security impact. Clearly explain how the vulnerability could be exploited and its potential consequences. If chaining is successful, emphasize the escalated impact.   
+
+5.2. Automation Tools and Scripts
+While manual testing is crucial for depth, automation tools can significantly enhance the efficiency and coverage of open redirect discovery.
+
+Dedicated Open Redirect Scanners: Tools like OpenRedirector ,    
+
+Openredirectscan , and    
+
+OpenRediWrecked  are specifically designed for this purpose. They automate the process of identifying parameters and injecting a wide array of payloads, including those with encoding techniques to bypass filters. Integrating these into a testing workflow can quickly identify potential targets across a large attack surface.   
+
+General Web Vulnerability Scanners: Commercial and open-source scanners such as Burp Suite (Pro), OWASP ZAP, Nikto, Invicti, and Acunetix include modules for detecting open redirects. These tools can perform automated crawls and fuzzing to identify common redirect patterns.   
+
+Custom Scripts and Payloads: Researchers can develop custom scripts (e.g., in Python or Go) to automate the testing of specific parameters or to apply unique payload variations. Maintaining a comprehensive list of known bypass payloads (as presented in Table 2) is essential for this.
+
+Dorking Tools: While not strictly automation tools for exploitation, leveraging Google Dorks (e.g., site:target.com inurl:redirect=) can help identify potential redirect points that are publicly indexed, providing a starting point for more targeted automated or manual testing.   
+
+The evolution of automated tools towards incorporating sophisticated bypass techniques, such as those that leverage encoding and target specific parsing inconsistencies , means that testers should prioritize using these advanced scanners. This approach can uncover elusive open redirects that simpler fuzzing might miss.   
+
+6. Conclusions
+The analysis of publicly available bug bounty writeups and disclosed reports from 2025 reveals a critical evolution in the understanding and impact of Open Redirect vulnerabilities. No longer can these be universally dismissed as low-severity phishing aids. The evidence from 2025 demonstrates their widespread prevalence across diverse software ecosystems—from enterprise applications like IBM Process Mining to third-party components like WordPress plugins and even desktop clients like FileZ.
+
+Crucially, the year 2025 has solidified the understanding that open redirects frequently serve as pivotal initial access vectors in complex, multi-stage attack chains. The Grafana CVE-2025-4123 stands as a definitive example, where an open redirect, facilitated by a path traversal bypass, directly enabled stored XSS, which then escalated to a full-read SSRF, leading to severe compromise of cloud environments. This real-world scenario directly validates the findings of the NDSS 2025 paper, which rigorously challenges the "myth of harmless open redirection" by quantifying their escalation potential to XSS, CSRF, and information leakage.
+
+The persistence of these vulnerabilities, even in critical authentication and OAuth flows, highlights a fundamental challenge: technical mitigations like warning screens are often insufficient against sophisticated social engineering and typosquatting. Attackers continue to exploit subtle inconsistencies in URL parsing and encoding, necessitating a proactive and comprehensive defense strategy.
+
+For security professionals, the implications are clear:
+
+Re-evaluate Risk: Open redirects should be assessed with a higher potential impact, especially when considering their chaining capabilities.
+
+Comprehensive Testing: Adopt a hybrid testing methodology that combines systematic manual reconnaissance and verification with advanced automated tools capable of applying sophisticated bypass payloads. Focus on authentication flows, password resets, and multi-step processes.
+
+Demonstrate Impact: When reporting, always strive to demonstrate the full potential impact by chaining the open redirect with other vulnerabilities (XSS, CSRF, SSRF, information leakage) to illustrate higher severity.
+
+Prioritize Whitelisting: For developers, the most robust defense against open redirects is strict server-side whitelisting of allowed redirection targets, rather than relying on blacklisting or partial input validation. Consistent and secure URL parsing across all application layers is paramount.
+
+Address Logical Flaws: Beyond input validation, developers must ensure proper termination of execution after redirects and careful handling of sensitive data to prevent logical flaws like Execution After Redirect (EAR) and unintended information leakage.
+
+By recognizing the evolving threat landscape and adopting more sophisticated discovery and remediation strategies, organizations and security researchers can collectively enhance the security posture against open redirect vulnerabilities and their more critical chained attacks.
+
