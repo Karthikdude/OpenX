@@ -460,27 +460,54 @@ class Scanner:
         """Scan multiple URLs using thread pool"""
         results = []
         
-        with ThreadPoolExecutor(max_workers=self.threads) as executor:
-            # Submit all URLs for scanning
-            future_to_url = {
-                executor.submit(self.scan_single_url, url): url 
-                for url in urls
-            }
-            
-            # Process completed scans
-            for future in as_completed(future_to_url):
-                url = future_to_url[future]
-                try:
-                    result = future.result()
-                    results.append(result)
-                except Exception as e:
-                    self.log(f"Error scanning {url}: {str(e)}", 'ERROR')
-                    # Add error result
-                    results.append({
-                        'url': url,
-                        'vulnerabilities': [],
-                        'error': str(e),
-                        'timestamp': time.time()
-                    })
+        # Use a flag to track if we're shutting down
+        self._shutdown = False
         
+        try:
+            with ThreadPoolExecutor(max_workers=self.threads) as executor:
+                # Submit all URLs for scanning
+                future_to_url = {}
+                for url in urls:
+                    if self._shutdown:
+                        break
+                    future = executor.submit(self.scan_single_url, url)
+                    future_to_url[future] = url
+                
+                # Process completed scans
+                try:
+                    for future in as_completed(future_to_url):
+                        if self._shutdown:
+                            break
+                            
+                        url = future_to_url[future]
+                        try:
+                            result = future.result()
+                            results.append(result)
+                        except Exception as e:
+                            self.log(f"Error scanning {url}: {str(e)}", 'ERROR')
+                            # Add error result
+                            results.append({
+                                'url': url,
+                                'vulnerabilities': [],
+                                'error': str(e),
+                                'timestamp': time.time()
+                            })
+                except KeyboardInterrupt:
+                    self.log("Shutting down gracefully...", 'INFO')
+                    self._shutdown = True
+                    # Cancel all pending futures
+                    for future in future_to_url:
+                        future.cancel()
+                    # Wait for running tasks to complete
+                    for future in future_to_url:
+                        if not future.done():
+                            try:
+                                future.result(timeout=1)  # Give it a moment to finish
+                            except:
+                                pass
+                    raise
+        except KeyboardInterrupt:
+            self._shutdown = True
+            raise
+            
         return results
