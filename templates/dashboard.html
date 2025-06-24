@@ -1,0 +1,365 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Flask Open Redirect Lab{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>
+        <i class="fas fa-tachometer-alt"></i>
+        Testing Dashboard
+    </h2>
+    <div>
+        <button class="btn btn-outline-primary" onclick="testAllEndpoints()">
+            <i class="fas fa-play"></i>
+            Test All
+        </button>
+        <button class="btn btn-outline-secondary" onclick="exportResults()">
+            <i class="fas fa-download"></i>
+            Export Results
+        </button>
+    </div>
+</div>
+
+<!-- Category Filters -->
+<div class="mb-4">
+    <div class="btn-group" role="group">
+        <button type="button" class="btn btn-outline-primary active" onclick="filterCategory('all')">All</button>
+        <button type="button" class="btn btn-outline-primary" onclick="filterCategory('Basic')">Basic</button>
+        <button type="button" class="btn btn-outline-primary" onclick="filterCategory('Encoding')">Encoding</button>
+        <button type="button" class="btn btn-outline-primary" onclick="filterCategory('Protocol')">Protocol</button>
+        <button type="button" class="btn btn-outline-primary" onclick="filterCategory('Bypass')">Bypass</button>
+        <button type="button" class="btn btn-outline-primary" onclick="filterCategory('Header')">Header</button>
+        <button type="button" class="btn btn-outline-primary" onclick="filterCategory('Client-Side')">Client-Side</button>
+    </div>
+</div>
+
+<!-- Endpoints Grid -->
+<div class="row" id="endpoints-grid">
+    {% for endpoint in endpoints %}
+    <div class="col-lg-6 col-xl-4 mb-4 endpoint-card" data-category="{{ endpoint.category }}">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">{{ endpoint.name }}</h6>
+                <span class="badge bg-secondary">{{ endpoint.category }}</span>
+            </div>
+            
+            <div class="card-body">
+                <p class="card-text text-muted small">{{ endpoint.description }}</p>
+                
+                <div class="mb-3">
+                    <label class="form-label small"><strong>Test URL:</strong></label>
+                    <div class="input-group input-group-sm">
+                        <input type="text" class="form-control font-monospace" 
+                               value="{{ request.url_root.rstrip('/') }}{{ endpoint.url }}" 
+                               readonly>
+                        <button class="btn btn-outline-secondary" type="button" 
+                                onclick="copyToClipboard(this.previousElementSibling)">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label small"><strong>Payload:</strong></label>
+                    <select class="form-select form-select-sm payload-select">
+                        {% for payload in endpoint.payloads %}
+                        <option value="{{ payload }}">{{ payload }}</option>
+                        {% endfor %}
+                        <option value="custom">Custom payload...</option>
+                    </select>
+                    <input type="text" class="form-control form-control-sm mt-2 custom-payload" 
+                           placeholder="Enter custom payload..." style="display: none;">
+                </div>
+            </div>
+            
+            <div class="card-footer">
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary btn-sm flex-fill" 
+                            onclick="testEndpoint('{{ endpoint.url }}', this)">
+                        <i class="fas fa-play"></i>
+                        Test
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" 
+                            onclick="openInNewTab('{{ endpoint.url }}', this)">
+                        <i class="fas fa-external-link-alt"></i>
+                    </button>
+                </div>
+                <div class="test-result mt-2" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Results Summary -->
+<div class="mt-5">
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="fas fa-chart-line"></i>
+                Test Results Summary
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="row text-center">
+                <div class="col-md-3">
+                    <div class="h4 text-primary" id="total-tests">0</div>
+                    <div class="text-muted">Total Tests</div>
+                </div>
+                <div class="col-md-3">
+                    <div class="h4 text-success" id="successful-tests">0</div>
+                    <div class="text-muted">Vulnerable</div>
+                </div>
+                <div class="col-md-3">
+                    <div class="h4 text-warning" id="failed-tests">0</div>
+                    <div class="text-muted">Protected</div>
+                </div>
+                <div class="col-md-3">
+                    <div class="h4 text-danger" id="error-tests">0</div>
+                    <div class="text-muted">Errors</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Help Modal -->
+<div class="modal fade" id="helpModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-question-circle"></i>
+                    Testing Guide
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <h6>How to Use This Lab</h6>
+                <ol>
+                    <li>Select an endpoint from the grid above</li>
+                    <li>Choose a payload or enter a custom one</li>
+                    <li>Click "Test" to attempt the redirect</li>
+                    <li>Observe the results and behavior</li>
+                </ol>
+                
+                <h6 class="mt-4">Vulnerability Categories</h6>
+                <ul>
+                    <li><strong>Basic:</strong> Simple redirect parameter vulnerabilities</li>
+                    <li><strong>Encoding:</strong> URL encoding bypass techniques</li>
+                    <li><strong>Protocol:</strong> Protocol-based bypass methods</li>
+                    <li><strong>Bypass:</strong> Filter and validation bypass techniques</li>
+                    <li><strong>Header:</strong> HTTP header-based injection</li>
+                    <li><strong>Client-Side:</strong> JavaScript and meta refresh redirects</li>
+                </ul>
+                
+                <div class="alert alert-warning mt-3">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    Remember: This is for educational and authorized testing purposes only!
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Global variables for tracking results
+let testResults = {
+    total: 0,
+    successful: 0,
+    failed: 0,
+    errors: 0
+};
+
+// Show help modal
+function showHelp() {
+    new bootstrap.Modal(document.getElementById('helpModal')).show();
+}
+
+// Filter endpoints by category
+function filterCategory(category) {
+    const cards = document.querySelectorAll('.endpoint-card');
+    const buttons = document.querySelectorAll('.btn-group .btn');
+    
+    // Update active button
+    buttons.forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    // Show/hide cards
+    cards.forEach(card => {
+        if (category === 'all' || card.dataset.category === category) {
+            card.style.display = 'block';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+}
+
+// Handle payload selection
+document.addEventListener('change', function(e) {
+    if (e.target.classList.contains('payload-select')) {
+        const customInput = e.target.parentNode.querySelector('.custom-payload');
+        if (e.target.value === 'custom') {
+            customInput.style.display = 'block';
+            customInput.focus();
+        } else {
+            customInput.style.display = 'none';
+        }
+    }
+});
+
+// Copy URL to clipboard
+function copyToClipboard(input) {
+    input.select();
+    document.execCommand('copy');
+    
+    const button = input.nextElementSibling;
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-check"></i>';
+    setTimeout(() => {
+        button.innerHTML = originalText;
+    }, 1000);
+}
+
+// Test individual endpoint
+function testEndpoint(baseUrl, button) {
+    const card = button.closest('.card');
+    const payloadSelect = card.querySelector('.payload-select');
+    const customPayload = card.querySelector('.custom-payload');
+    const resultDiv = card.querySelector('.test-result');
+    
+    let payload = payloadSelect.value === 'custom' ? customPayload.value : payloadSelect.value;
+    
+    if (!payload) {
+        alert('Please select or enter a payload');
+        return;
+    }
+    
+    // Build test URL
+    const testUrl = window.location.origin + baseUrl + encodeURIComponent(payload);
+    
+    // Update UI
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing...';
+    resultDiv.style.display = 'none';
+    
+    // Perform test
+    fetch(testUrl, { 
+        method: 'HEAD',
+        redirect: 'manual'
+    })
+    .then(response => {
+        testResults.total++;
+        
+        let resultClass = 'alert-success';
+        let resultText = '';
+        let resultIcon = 'fas fa-check-circle';
+        
+        if (response.type === 'opaqueredirect' || response.status >= 300 && response.status < 400) {
+            testResults.successful++;
+            resultText = `Vulnerable! Redirect detected (Status: ${response.status})`;
+        } else {
+            testResults.failed++;
+            resultClass = 'alert-warning';
+            resultIcon = 'fas fa-shield-alt';
+            resultText = `Protected (Status: ${response.status})`;
+        }
+        
+        resultDiv.innerHTML = `
+            <div class="alert ${resultClass} alert-sm mb-0">
+                <i class="${resultIcon}"></i> ${resultText}
+            </div>
+        `;
+        resultDiv.style.display = 'block';
+    })
+    .catch(error => {
+        testResults.total++;
+        testResults.errors++;
+        
+        resultDiv.innerHTML = `
+            <div class="alert alert-danger alert-sm mb-0">
+                <i class="fas fa-exclamation-triangle"></i> Error: ${error.message}
+            </div>
+        `;
+        resultDiv.style.display = 'block';
+    })
+    .finally(() => {
+        button.disabled = false;
+        button.innerHTML = '<i class="fas fa-play"></i> Test';
+        updateResultsSummary();
+    });
+}
+
+// Open endpoint in new tab
+function openInNewTab(baseUrl, button) {
+    const card = button.closest('.card');
+    const payloadSelect = card.querySelector('.payload-select');
+    const customPayload = card.querySelector('.custom-payload');
+    
+    let payload = payloadSelect.value === 'custom' ? customPayload.value : payloadSelect.value;
+    
+    if (!payload) {
+        alert('Please select or enter a payload');
+        return;
+    }
+    
+    const testUrl = window.location.origin + baseUrl + encodeURIComponent(payload);
+    window.open(testUrl, '_blank');
+}
+
+// Test all visible endpoints
+function testAllEndpoints() {
+    const visibleCards = document.querySelectorAll('.endpoint-card[style*="display: block"], .endpoint-card:not([style*="display: none"])');
+    
+    if (confirm(`This will test ${visibleCards.length} endpoints. Continue?`)) {
+        visibleCards.forEach((card, index) => {
+            setTimeout(() => {
+                const testButton = card.querySelector('.btn-primary');
+                testEndpoint(testButton.getAttribute('onclick').match(/'([^']+)'/)[1], testButton);
+            }, index * 1000); // Stagger tests by 1 second
+        });
+    }
+}
+
+// Update results summary
+function updateResultsSummary() {
+    document.getElementById('total-tests').textContent = testResults.total;
+    document.getElementById('successful-tests').textContent = testResults.successful;
+    document.getElementById('failed-tests').textContent = testResults.failed;
+    document.getElementById('error-tests').textContent = testResults.errors;
+}
+
+// Export results
+function exportResults() {
+    const results = {
+        timestamp: new Date().toISOString(),
+        summary: testResults,
+        details: []
+    };
+    
+    // Collect detailed results
+    document.querySelectorAll('.endpoint-card').forEach(card => {
+        const name = card.querySelector('.card-header h6').textContent;
+        const result = card.querySelector('.test-result');
+        
+        if (result && result.style.display !== 'none') {
+            results.details.push({
+                endpoint: name,
+                result: result.textContent.trim()
+            });
+        }
+    });
+    
+    // Download as JSON
+    const blob = new Blob([JSON.stringify(results, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `redirect-lab-results-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+</script>
+{% endblock %}

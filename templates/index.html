@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Home - Flask Open Redirect Lab{% endblock %}
+
+{% block content %}
+<div class="hero-section text-center mb-5">
+    <h1 class="display-4">
+        <i class="fas fa-shield-alt text-danger"></i>
+        Open Redirect Testing Lab
+    </h1>
+    <p class="lead">Educational environment for testing open redirect vulnerabilities</p>
+    <a href="{{ url_for('dashboard') }}" class="btn btn-primary btn-lg">
+        <i class="fas fa-rocket"></i>
+        Start Testing
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body text-center">
+                <i class="fas fa-bug fa-3x text-danger mb-3"></i>
+                <h5 class="card-title">Vulnerability Types</h5>
+                <p class="card-text">Multiple categories of open redirect vulnerabilities for comprehensive testing.</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body text-center">
+                <i class="fas fa-code fa-3x text-warning mb-3"></i>
+                <h5 class="card-title">Real-world Scenarios</h5>
+                <p class="card-text">Realistic vulnerable endpoints mimicking common web application patterns.</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body text-center">
+                <i class="fas fa-graduation-cap fa-3x text-success mb-3"></i>
+                <h5 class="card-title">Educational</h5>
+                <p class="card-text">Learn about different bypass techniques and vulnerability patterns.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="mt-5">
+    <div class="alert alert-warning" role="alert">
+        <i class="fas fa-exclamation-triangle"></i>
+        <strong>Warning:</strong> This application contains intentional security vulnerabilities. 
+        Use only in controlled environments for authorized security testing and educational purposes.
+    </div>
+</div>
+{% endblock %}

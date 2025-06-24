@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meta Refresh Redirect Test</title>
+    
+    <!-- Vulnerable meta refresh redirect -->
+    <meta http-equiv="refresh" content="3; url={{ redirect_url }}">
+    
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 50px;
+            background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 50%, #fecfef 100%);
+            color: #333;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.9);
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        .countdown {
+            font-size: 3em;
+            font-weight: bold;
+            color: #e74c3c;
+            margin: 20px 0;
+        }
+        .redirect-url {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            word-break: break-all;
+            font-family: 'Courier New', monospace;
+            border-left: 4px solid #007bff;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #e9ecef;
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #007bff, #28a745);
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>🔄 Meta Refresh Redirect</h2>
+        <p>Redirecting via HTML meta refresh tag in:</p>
+        <div class="countdown" id="countdown">3</div>
+        
+        <div class="progress-bar">
+            <div class="progress-fill" id="progress"></div>
+        </div>
+        
+        <p>Destination URL:</p>
+        <div class="redirect-url">{{ redirect_url }}</div>
+        
+        <p>If not redirected automatically, <a href="{{ redirect_url }}" style="color: #007bff; text-decoration: none;">click here</a></p>
+        
+        <div style="margin-top: 30px; font-size: 12px; color: #6c757d;">
+            <p>💡 This demonstrates meta refresh redirect vulnerability</p>
+            <p>The URL parameter is directly inserted into the meta tag</p>
+        </div>
+    </div>
+
+    <script>
+        // Visual countdown and progress bar
+        let timeLeft = 3;
+        const countdownEl = document.getElementById('countdown');
+        const progressEl = document.getElementById('progress');
+        
+        const timer = setInterval(() => {
+            timeLeft--;
+            countdownEl.textContent = timeLeft;
+            progressEl.style.width = ((3 - timeLeft) / 3 * 100) + '%';
+            
+            if (timeLeft <= 0) {
+                clearInterval(timer);
+                countdownEl.textContent = '🚀';
+            }
+        }, 1000);
+        
+        // Set initial progress
+        progressEl.style.width = '0%';
+        
+        // Backup JavaScript redirect (in case meta refresh fails)
+        setTimeout(() => {
+            if (window.location.href === document.URL) {
+                window.location.href = "{{ redirect_url|safe }}";
+            }
+        }, 4000);
+    </script>
+</body>
+</html>
