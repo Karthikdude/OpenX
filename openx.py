@@ -5,8 +5,9 @@ A production-grade tool for detecting open redirect vulnerabilities
 """
 
 import argparse
-import sys
 import os
+import sys
+import traceback
 from colorama import Fore, Style, init
 from scanner.core import Scanner
 from scanner.utils import validate_url, load_urls_from_file
@@ -214,10 +215,10 @@ def main():
                     sys.exit(1)
             except KeyboardInterrupt:
                 print(f"\n{Fore.YELLOW}[INFO] Interrupted by user{Style.RESET_ALL}")
-                sys.exit(0)
+                return 0
             except Exception as e:
                 print(f"{Fore.RED}[ERROR] Failed to read from STDIN: {e}{Style.RESET_ALL}")
-                sys.exit(1)
+                return 1
         
         else:
             # Check if data is being piped (auto-detect STDIN)
@@ -236,14 +237,14 @@ def main():
                                 print(f"{Fore.YELLOW}[WARNING] Skipping invalid URL: {line}{Style.RESET_ALL}")
                     if not urls:
                         print(f"{Fore.RED}[ERROR] No valid URLs provided via pipe{Style.RESET_ALL}")
-                        sys.exit(1)
+                        return 1
                 except Exception as e:
                     print(f"{Fore.RED}[ERROR] Failed to read from pipe: {e}{Style.RESET_ALL}")
-                    sys.exit(1)
+                    return 1
             else:
                 print(f"{Fore.RED}[ERROR] No input method specified. Use -u, -l, -e, --stdin, or pipe URLs{Style.RESET_ALL}")
                 parser.print_help()
-                sys.exit(1)
+                return 1
         
         # Start scanning
         if not args.silent:
@@ -277,13 +278,21 @@ def main():
     
     except KeyboardInterrupt:
         print(f"\n{Fore.YELLOW}[INFO] Scan interrupted by user{Style.RESET_ALL}")
-        sys.exit(0)
+        return 0
     except Exception as e:
         print(f"{Fore.RED}[ERROR] Unexpected error: {str(e)}{Style.RESET_ALL}")
         if args.verbose:
-            import traceback
             traceback.print_exc()
-        sys.exit(1)
+        return 1
 
 if __name__ == '__main__':
-    main()
+    try:
+        sys.exit(main() or 0)
+    except KeyboardInterrupt:
+        print(f"\n{Fore.YELLOW}[INFO] Operation cancelled by user{Style.RESET_ALL}")
+        sys.exit(0)
+    except Exception as e:
+        print(f"{Fore.RED}[ERROR] Fatal error: {str(e)}{Style.RESET_ALL}")
+        if '--verbose' in sys.argv or '-v' in sys.argv:
+            traceback.print_exc()
+        sys.exit(1)
