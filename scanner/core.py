@@ -18,8 +18,13 @@ class Scanner:
     def __init__(self, threads=10, timeout=10, delay=0, user_agent=None, 
                  proxy=None, follow_redirects=5, verbose=False, silent=False,
                  fast_mode=False, small_mode=False, test_headers=False,
-                 callback_url=None, custom_payloads=None, show_status_codes=False):
-        """Initialize scanner with configuration"""
+                 callback_url=None, custom_payloads=None, show_status_codes=False,
+                 verify_ssl=True):
+        """Initialize scanner with configuration
+        
+        Args:
+            verify_ssl (bool): Whether to verify SSL certificates. Defaults to True.
+        """
         self.threads = threads
         self.timeout = timeout
         self.delay = delay
@@ -33,6 +38,7 @@ class Scanner:
         self.test_headers = test_headers
         self.callback_url = callback_url
         self.show_status_codes = show_status_codes
+        self.verify_ssl = verify_ssl
         
         # Thread lock for output synchronization
         self.output_lock = threading.Lock()
@@ -82,7 +88,7 @@ class Scanner:
                 headers=extra_headers,
                 timeout=self.timeout,
                 allow_redirects=allow_redirects,
-                verify=False  # Disable SSL verification for testing
+                verify=self.verify_ssl
             )
             return response
         except UnicodeEncodeError as e:

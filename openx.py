@@ -96,6 +96,8 @@ Examples:
     # Display options
     parser.add_argument('--status-codes', action='store_true',
                        help='Display HTTP status codes')
+    parser.add_argument('--insecure', '-k', action='store_true',
+                       help='Disable SSL certificate verification')
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='Verbose output with detailed information')
     parser.add_argument('--silent', action='store_true',
@@ -136,7 +138,8 @@ def main():
             test_headers=args.headers,
             callback_url=args.callback,
             custom_payloads=args.payloads,
-            show_status_codes=args.status_codes
+            show_status_codes=args.status_codes,
+            verify_ssl=not args.insecure
         )
         
         # Determine target URLs
