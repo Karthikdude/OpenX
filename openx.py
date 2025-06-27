@@ -9,6 +9,7 @@ import os
 import sys
 import traceback
 import re
+import signal
 from colorama import Fore, Style, init
 from scanner.core import Scanner
 from scanner.utils import validate_url, load_urls_from_file
@@ -17,6 +18,16 @@ from scanner.external import ExternalTools
 
 # Initialize colorama for cross-platform colored output
 init(autoreset=True)
+
+# Global scanner instance for signal handling
+scanner_instance = None
+
+def signal_handler(signum, frame):
+    """Handle Ctrl+C signal for immediate shutdown"""
+    if scanner_instance:
+        scanner_instance.shutdown()
+    print(f"\n{Fore.RED}[!] Scan interrupted by user - shutting down immediately{Style.RESET_ALL}")
+    sys.exit(0)
 
 def print_banner():
     """Print OpenX banner"""
@@ -104,6 +115,8 @@ Examples:
                        help='Verbose output with detailed information')
     parser.add_argument('--silent', action='store_true',
                        help='Silent mode (suppress banner and non-essential output)')
+    parser.add_argument('--errors', action='store_true',
+                       help='Hide error messages from terminal output')
     
     # Performance options
     parser.add_argument('-f', '--fast', action='store_true',
@@ -127,8 +140,15 @@ Examples:
 
 def main():
     """Main entry point"""
+    global scanner_instance
+    
     parser = create_parser()
     args = parser.parse_args()
+    
+    # Set up signal handler for immediate shutdown
+    signal.signal(signal.SIGINT, signal_handler)
+    if hasattr(signal, 'SIGTERM'):
+        signal.signal(signal.SIGTERM, signal_handler)
     
     # Print banner unless in silent mode
     if not args.silent:
@@ -155,8 +175,12 @@ def main():
             reduce_false_positives=args.reduce_fp,
             ignore_same_domain=args.ignore_same_domain,
             ignore_wp_oembed=args.ignore_wp_oembed,
-            ignore_queue_systems=args.ignore_queue_systems
+            ignore_queue_systems=args.ignore_queue_systems,
+            hide_errors=args.errors
         )
+        
+        # Set global scanner instance for signal handling
+        scanner_instance = scanner
         
         # Determine target URLs
         urls = []
@@ -164,7 +188,8 @@ def main():
         if args.url:
             # Single URL
             if not validate_url(args.url):
-                print(f"{Fore.RED}[ERROR] Invalid URL: {args.url}{Style.RESET_ALL}")
+                if not args.errors:
+                    print(f"{Fore.RED}[ERROR] Invalid URL: {args.url}{Style.RESET_ALL}")
                 sys.exit(1)
             urls = [args.url]
             
@@ -173,10 +198,12 @@ def main():
             try:
                 urls = load_urls_from_file(args.list)
                 if not urls:
-                    print(f"{Fore.RED}[ERROR] No valid URLs found in file: {args.list}{Style.RESET_ALL}")
+                    if not args.errors:
+                        print(f"{Fore.RED}[ERROR] No valid URLs found in file: {args.list}{Style.RESET_ALL}")
                     sys.exit(1)
             except FileNotFoundError:
-                print(f"{Fore.RED}[ERROR] File not found: {args.list}{Style.RESET_ALL}")
+                if not args.errors:
+                    print(f"{Fore.RED}[ERROR] File not found: {args.list}{Style.RESET_ALL}")
                 sys.exit(1)
                 
         elif args.external:
@@ -194,23 +221,27 @@ def main():
                 elif external_tools.check_wayback_available():
                     use_wayback = True
                 else:
-                    print(f"{Fore.RED}[ERROR] No external tools available. Install 'gau' or 'waybackurls'{Style.RESET_ALL}")
+                    if not args.errors:
+                        print(f"{Fore.RED}[ERROR] No external tools available. Install 'gau' or 'waybackurls'{Style.RESET_ALL}")
                     sys.exit(1)
             
             # Gather URLs using external tools
             if use_gau:
                 if not external_tools.check_gau_available():
-                    print(f"{Fore.RED}[ERROR] 'gau' tool not available{Style.RESET_ALL}")
+                    if not args.errors:
+                        print(f"{Fore.RED}[ERROR] 'gau' tool not available{Style.RESET_ALL}")
                     sys.exit(1)
                 urls = external_tools.run_gau(args.external)
             elif use_wayback:
                 if not external_tools.check_wayback_available():
-                    print(f"{Fore.RED}[ERROR] 'waybackurls' tool not available{Style.RESET_ALL}")
+                    if not args.errors:
+                        print(f"{Fore.RED}[ERROR] 'waybackurls' tool not available{Style.RESET_ALL}")
                     sys.exit(1)
                 urls = external_tools.run_wayback(args.external)
             
             if not urls:
-                print(f"{Fore.RED}[ERROR] No URLs gathered from external tools{Style.RESET_ALL}")
+                if not args.errors:
+                    print(f"{Fore.RED}[ERROR] No URLs gathered from external tools{Style.RESET_ALL}")
                 sys.exit(1)
         
         elif args.stdin:
@@ -226,13 +257,16 @@ def main():
                         elif not args.silent:
                             print(f"{Fore.YELLOW}[WARNING] Skipping invalid URL: {line}{Style.RESET_ALL}")
                 if not urls:
-                    print(f"{Fore.RED}[ERROR] No valid URLs provided via STDIN{Style.RESET_ALL}")
+                    if not args.errors:
+                        print(f"{Fore.RED}[ERROR] No valid URLs provided via STDIN{Style.RESET_ALL}")
                     sys.exit(1)
             except KeyboardInterrupt:
-                print(f"\n{Fore.YELLOW}[INFO] Interrupted by user{Style.RESET_ALL}")
+                if not args.errors:
+                    print(f"\n{Fore.YELLOW}[INFO] Interrupted by user{Style.RESET_ALL}")
                 return 0
             except Exception as e:
-                print(f"{Fore.RED}[ERROR] Failed to read from STDIN: {e}{Style.RESET_ALL}")
+                if not args.errors:
+                    print(f"{Fore.RED}[ERROR] Failed to read from STDIN: {e}{Style.RESET_ALL}")
                 return 1
         
         else:
@@ -251,14 +285,17 @@ def main():
                             elif not args.silent:
                                 print(f"{Fore.YELLOW}[WARNING] Skipping invalid URL: {line}{Style.RESET_ALL}")
                     if not urls:
-                        print(f"{Fore.RED}[ERROR] No valid URLs provided via pipe{Style.RESET_ALL}")
+                        if not args.errors:
+                            print(f"{Fore.RED}[ERROR] No valid URLs provided via pipe{Style.RESET_ALL}")
                         return 1
                 except Exception as e:
-                    print(f"{Fore.RED}[ERROR] Failed to read from pipe: {e}{Style.RESET_ALL}")
+                    if not args.errors:
+                        print(f"{Fore.RED}[ERROR] Failed to read from pipe: {e}{Style.RESET_ALL}")
                     return 1
             else:
-                print(f"{Fore.RED}[ERROR] No input method specified. Use -u, -l, -e, --stdin, or pipe URLs{Style.RESET_ALL}")
-                parser.print_help()
+                if not args.errors:
+                    print(f"{Fore.RED}[ERROR] No input method specified. Use -u, -l, -e, --stdin, or pipe URLs{Style.RESET_ALL}")
+                    parser.print_help()
                 return 1
         
         # Start scanning
@@ -292,22 +329,26 @@ def main():
                 print(f"{Fore.YELLOW}[INFO] No vulnerabilities found.{Style.RESET_ALL}")
     
     except KeyboardInterrupt:
-        print(f"\n{Fore.YELLOW}[INFO] Scan interrupted by user{Style.RESET_ALL}")
+        if not args.errors:
+            print(f"\n{Fore.YELLOW}[INFO] Scan interrupted by user{Style.RESET_ALL}")
         return 0
     except Exception as e:
-        print(f"{Fore.RED}[ERROR] Unexpected error: {str(e)}{Style.RESET_ALL}")
-        if args.verbose:
-            traceback.print_exc()
+        if not args.errors:
+            print(f"{Fore.RED}[ERROR] Unexpected error: {str(e)}{Style.RESET_ALL}")
+            if args.verbose:
+                traceback.print_exc()
         return 1
 
 if __name__ == '__main__':
     try:
         sys.exit(main() or 0)
     except KeyboardInterrupt:
-        print(f"\n{Fore.YELLOW}[INFO] Operation cancelled by user{Style.RESET_ALL}")
+        if '--errors' not in sys.argv:
+            print(f"\n{Fore.YELLOW}[INFO] Operation cancelled by user{Style.RESET_ALL}")
         sys.exit(0)
     except Exception as e:
-        print(f"{Fore.RED}[ERROR] Fatal error: {str(e)}{Style.RESET_ALL}")
-        if '--verbose' in sys.argv or '-v' in sys.argv:
-            traceback.print_exc()
+        if '--errors' not in sys.argv:
+            print(f"{Fore.RED}[ERROR] Fatal error: {str(e)}{Style.RESET_ALL}")
+            if '--verbose' in sys.argv or '-v' in sys.argv:
+                traceback.print_exc()
         sys.exit(1)

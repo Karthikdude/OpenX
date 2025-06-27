@@ -21,7 +21,8 @@ class Scanner:
                  fast_mode=False, small_mode=False, test_headers=False,
                  callback_url=None, custom_payloads=None, show_status_codes=False,
                  verify_ssl=True, reduce_false_positives=False, ignore_same_domain=False,
-                 ignore_wp_oembed=False, ignore_queue_systems=False, verify_evil_com=True):
+                 ignore_wp_oembed=False, ignore_queue_systems=False, verify_evil_com=True,
+                 hide_errors=False):
         """Initialize scanner with configuration
         
         Args:
@@ -31,6 +32,7 @@ class Scanner:
             ignore_wp_oembed (bool): Ignore WordPress oEmbed API endpoints. Defaults to False.
             ignore_queue_systems (bool): Ignore queue systems with target parameters. Defaults to False.
             verify_evil_com (bool): Verify that redirects to evil.com are legitimate. Defaults to True.
+            hide_errors (bool): Hide error messages from terminal output. Defaults to False.
         """
         self.threads = threads
         self.timeout = timeout
@@ -46,6 +48,7 @@ class Scanner:
         self.callback_url = callback_url
         self.show_status_codes = show_status_codes
         self.verify_ssl = verify_ssl
+        self.hide_errors = hide_errors
         
         # False positive reduction options
         self.reduce_false_positives = reduce_false_positives
@@ -56,6 +59,9 @@ class Scanner:
         
         # Thread lock for output synchronization
         self.output_lock = threading.Lock()
+        
+        # Shutdown flag for immediate termination
+        self._shutdown = False
         
         # Initialize payload manager
         self.payload_manager = PayloadManager(
@@ -82,6 +88,10 @@ class Scanner:
         if self.silent and level != 'VULN':
             return
         
+        # Hide errors if hide_errors flag is set
+        if self.hide_errors and level == 'ERROR':
+            return
+        
         with self.output_lock:
             if level == 'VULN':
                 print(f"{Fore.GREEN}[VULN] {message}{Style.RESET_ALL}")
@@ -91,6 +101,10 @@ class Scanner:
                 print(f"{color}[VERBOSE] {message}{Style.RESET_ALL}")
             elif level == 'INFO' and not self.silent:
                 print(f"{color}[INFO] {message}{Style.RESET_ALL}")
+    
+    def shutdown(self):
+        """Shutdown the scanner immediately"""
+        self._shutdown = True
     
     def make_request(self, url, method='GET', headers=None, allow_redirects=True):
         """Make HTTP request with error handling"""
@@ -492,6 +506,17 @@ class Scanner:
     
     def scan_single_url(self, url):
         """Scan a single URL for open redirect vulnerabilities"""
+        # Check for shutdown at the beginning
+        if self._shutdown:
+            return {
+                'url': url,
+                'vulnerabilities': [],
+                'total_requests': 0,
+                'timestamp': time.time(),
+                'skipped': True,
+                'reason': 'Shutdown requested'
+            }
+        
         self.log(f"Scanning: {url}", 'INFO', Fore.CYAN)
         
         # Skip URLs that match known false positive patterns
@@ -520,12 +545,20 @@ class Scanner:
         
         # Test each parameter with each payload
         for param_name in params_to_test:
+            # Check for shutdown
+            if self._shutdown:
+                break
+                
             # Skip parameters that are likely to cause false positives
             if self.should_skip_parameter(url, param_name):
                 self.log(f"Skipping parameter with false positive potential: {param_name}", 'VERBOSE', Fore.YELLOW)
                 continue
                 
             for payload in payloads:
+                # Check for shutdown
+                if self._shutdown:
+                    break
+                    
                 # Test URL parameter
                 param_vulns = self.test_url_parameter(url, param_name, payload)
                 
@@ -544,7 +577,7 @@ class Scanner:
                 vulnerabilities.extend(filtered_advanced_vulns)
                 
                 # Apply delay if configured
-                if self.delay > 0:
+                if self.delay > 0 and not self._shutdown:
                     time.sleep(self.delay)
                 
                 # Fast mode: stop after first vulnerability found
@@ -734,9 +767,6 @@ class Scanner:
         """Scan multiple URLs using thread pool"""
         results = []
         
-        # Use a flag to track if we're shutting down
-        self._shutdown = False
-        
         try:
             with ThreadPoolExecutor(max_workers=self.threads) as executor:
                 # Submit all URLs for scanning
@@ -751,34 +781,31 @@ class Scanner:
                 try:
                     for future in as_completed(future_to_url):
                         if self._shutdown:
+                            # Cancel all remaining futures immediately
+                            for remaining_future in future_to_url:
+                                if not remaining_future.done():
+                                    remaining_future.cancel()
                             break
                             
                         url = future_to_url[future]
                         try:
-                            result = future.result()
+                            result = future.result(timeout=0.1)  # Quick timeout for immediate shutdown
                             results.append(result)
                         except Exception as e:
-                            self.log(f"Error scanning {url}: {str(e)}", 'ERROR')
-                            # Add error result
-                            results.append({
-                                'url': url,
-                                'vulnerabilities': [],
-                                'error': str(e),
-                                'timestamp': time.time()
-                            })
+                            if not self._shutdown:  # Only log if not shutting down
+                                self.log(f"Error scanning {url}: {str(e)}", 'ERROR')
+                                # Add error result
+                                results.append({
+                                    'url': url,
+                                    'vulnerabilities': [],
+                                    'error': str(e),
+                                    'timestamp': time.time()
+                                })
                 except KeyboardInterrupt:
-                    self.log("Shutting down gracefully...", 'INFO')
                     self._shutdown = True
-                    # Cancel all pending futures
+                    # Cancel all pending futures immediately
                     for future in future_to_url:
                         future.cancel()
-                    # Wait for running tasks to complete
-                    for future in future_to_url:
-                        if not future.done():
-                            try:
-                                future.result(timeout=1)  # Give it a moment to finish
-                            except:
-                                pass
                     raise
         except KeyboardInterrupt:
             self._shutdown = True
