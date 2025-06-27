@@ -428,42 +428,7 @@ class Scanner:
         
         return vulnerabilities
     
-    def test_path_traversal_bypass(self, url, payload):
-        """Test for path traversal bypasses like CVE-2025-4123"""
-        vulnerabilities = []
-        
-        # Test double-encoded path traversal sequences
-        path_traversal_payloads = [
-            "..%2F" + payload.replace("http://", "").replace("https://", ""),
-            "..%252F" + payload.replace("http://", "").replace("https://", ""),
-            payload + "/..%2F",
-            payload + "/..%252F"
-        ]
-        
-        for traversal_payload in path_traversal_payloads:
-            # Test common redirect parameters
-            for param in ['url', 'redirect', 'path', 'file']:
-                if param in url.lower():
-                    test_url = url.replace(f"{param}=", f"{param}={traversal_payload}")
-                    response = self.make_request(test_url, allow_redirects=False)
-                    
-                    if response and response.status_code in [301, 302, 303, 307, 308]:
-                        location = response.headers.get('Location', '')
-                        if payload.replace("http://", "").replace("https://", "") in location:
-                            vulnerability = {
-                                'url': test_url,
-                                'parameter': param,
-                                'method': 'Path Traversal Bypass',
-                                'payload': traversal_payload,
-                                'redirect_to': location,
-                                'status_code': response.status_code,
-                                'severity': 'Critical',
-                                'description': 'Path traversal bypass enables open redirect (CVE-2025-4123 style)'
-                            }
-                            vulnerabilities.append(vulnerability)
-                            self.log(f"Found path traversal bypass vulnerability: {test_url} -> {location}", 'VULN')
-        
-        return vulnerabilities
+
     
     def scan_single_url(self, url):
         """Scan a single URL for open redirect vulnerabilities"""
@@ -522,11 +487,6 @@ class Scanner:
                 csrf_vulns = self.test_csrf_chaining(url, payload)
                 filtered_csrf_vulns = self.filter_false_positives(url, csrf_vulns)
                 vulnerabilities.extend(filtered_csrf_vulns)
-                
-                # Test path traversal bypasses (CVE-2025-4123 style)
-                traversal_vulns = self.test_path_traversal_bypass(url, payload)
-                filtered_traversal_vulns = self.filter_false_positives(url, traversal_vulns)
-                vulnerabilities.extend(filtered_traversal_vulns)
                 
                 # Apply delay if configured
                 if self.delay > 0:

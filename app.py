@@ -567,32 +567,6 @@ def upload_success():
         return redirect(next_url)
     return "Upload completed"
 
-# Error handler
-@app.route('/path-traversal-bypass')
-def path_traversal_bypass():
-    """CVE-2025-4123 style path traversal bypass vulnerability"""
-    url_param = request.args.get('url', '/dashboard')
-    
-    # Weak sanitization that can be bypassed with double encoding
-    if '../../' in url_param:
-        return "Path traversal detected", 400
-    
-    # This can be bypassed with ..%2F (double encoded)
-    if url_param.startswith('http://') or url_param.startswith('https://'):
-        return redirect(url_param, code=302)
-    
-    # Simulate internal redirect that could be exploited
-    if '..%2F' in url_param:
-        # Decode the path traversal
-        decoded_url = url_param.replace('..%2F', '../')
-        if decoded_url.startswith('../') and 'http' in decoded_url:
-            # Extract the malicious URL
-            malicious_url = decoded_url.split('../')[-1]
-            if malicious_url.startswith('http'):
-                return redirect(malicious_url, code=302)
-    
-    return redirect(url_param, code=302)
-
 @app.route('/x-forwarded-host-bypass')
 def x_forwarded_host_bypass():
     """Dashboard.omise.co style X-Forwarded-Host header bypass"""

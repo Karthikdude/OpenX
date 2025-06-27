@@ -124,9 +124,7 @@ class PayloadManager:
             "http://subdomain.evil.com",
             "https://www.evil.com",
             
-            # Path traversal attempts
-            "../../../evil.com",
-            "..\\..\\..\\evil.com",
+
             
             # Null byte injection
             "http://evil.com%00",
@@ -251,11 +249,7 @@ class PayloadManager:
             "http://legitapp.com%09evil.com",     # tab domain bypass
             "http://legitapp.com°evil.com",       # non-ASCII character bypass
             
-            # Path traversal and double encoding (CVE-2025-4123 style)
-            "..%2F/evil.com",                     # double-encoded path traversal
-            "..%252F/evil.com",                   # triple-encoded path traversal
-            "http://evil.com/..%2F",              # path traversal in URL
-            "http://evil.com/..%252F",            # double-encoded path traversal
+
             
             # Advanced JavaScript protocol bypasses for DOM-based redirects
             "JavaScript:alert(1)",               # case variation
