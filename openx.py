@@ -8,6 +8,7 @@ import argparse
 import os
 import sys
 import traceback
+import re
 from colorama import Fore, Style, init
 from scanner.core import Scanner
 from scanner.utils import validate_url, load_urls_from_file
@@ -112,6 +113,16 @@ Examples:
     parser.add_argument('-r', '--recursive', action='store_true',
                        help='Recursively test discovered parameters')
     
+    # False positive reduction options
+    parser.add_argument('--reduce-fp', action='store_true',
+                       help='Enable enhanced false positive reduction')
+    parser.add_argument('--ignore-same-domain', action='store_true',
+                       help='Ignore redirects to the same domain or subdomains')
+    parser.add_argument('--ignore-wp-oembed', action='store_true',
+                       help='Ignore WordPress oEmbed API endpoints')
+    parser.add_argument('--ignore-queue-systems', action='store_true',
+                       help='Ignore queue systems with target parameters')
+    
     return parser
 
 def main():
@@ -140,7 +151,11 @@ def main():
             callback_url=args.callback,
             custom_payloads=args.payloads,
             show_status_codes=args.status_codes,
-            verify_ssl=not args.insecure
+            verify_ssl=not args.insecure,
+            reduce_false_positives=args.reduce_fp,
+            ignore_same_domain=args.ignore_same_domain,
+            ignore_wp_oembed=args.ignore_wp_oembed,
+            ignore_queue_systems=args.ignore_queue_systems
         )
         
         # Determine target URLs

@@ -40,10 +40,10 @@ def get_domain_from_url(url):
         return None
 
 def is_external_redirect(original_url, redirect_url):
-    """Check if redirect URL is external to the original domain"""
+    """Check if a redirect is to an external domain"""
     if not redirect_url:
         return False
-    
+        
     # Handle relative URLs
     if redirect_url.startswith('/'):
         return False
@@ -73,8 +73,70 @@ def is_external_redirect(original_url, redirect_url):
     original_domain = original_domain.replace('www.', '')
     redirect_domain = redirect_domain.replace('www.', '')
     
-    # Check if domains are different
-    return original_domain != redirect_domain
+    # If domains are identical, it's not an external redirect
+    if original_domain == redirect_domain:
+        return False
+    
+    # Check for WordPress oEmbed API endpoints (common false positive)
+    if 'wp-json/oembed' in original_url and 'url=' in original_url:
+        # Extract the domain from the url parameter
+        url_param_match = re.search(r'url=([^&]+)', original_url)
+        if url_param_match:
+            url_param = url_param_match.group(1)
+            # URL decode the parameter
+            url_param = urllib.parse.unquote(url_param)
+            # Extract domain from the url parameter
+            url_param_domain = get_domain_from_url(url_param)
+            if url_param_domain:
+                url_param_domain = url_param_domain.replace('www.', '')
+                # If the redirect domain matches the domain in the url parameter, it's not external
+                if redirect_domain == url_param_domain or url_param_domain in redirect_domain:
+                    return False
+    
+    # Check for queue systems with target parameter (common false positive)
+    if ('queue.' in original_domain or '/queue/' in original_url) and 'target=' in original_url:
+        # Extract the domain from the target parameter
+        target_param_match = re.search(r'target=([^&]+)', original_url)
+        if target_param_match:
+            target_param = target_param_match.group(1)
+            # URL decode the parameter
+            target_param = urllib.parse.unquote(target_param)
+            # Extract domain from the target parameter
+            target_param_domain = get_domain_from_url(target_param)
+            if target_param_domain:
+                target_param_domain = target_param_domain.replace('www.', '')
+                # If the redirect domain matches the domain in the target parameter, it's not external
+                if redirect_domain == target_param_domain or target_param_domain in redirect_domain:
+                    return False
+                # Check if the original domain without 'queue.' prefix matches the redirect domain
+                queue_prefix_removed = original_domain.replace('queue.', '')
+                if queue_prefix_removed == target_param_domain:
+                    return False
+    
+    # Check for subdomains of the same parent domain
+    original_parts = original_domain.split('.')
+    redirect_parts = redirect_domain.split('.')
+    
+    # Extract the parent domain (last two parts, e.g., example.com)
+    if len(original_parts) >= 2 and len(redirect_parts) >= 2:
+        original_parent = '.'.join(original_parts[-2:])
+        redirect_parent = '.'.join(redirect_parts[-2:])
+        
+        # If parent domains match, check if this is a legitimate subdomain change
+        if original_parent == redirect_parent:
+            # List of critical subdomains that should still be flagged even within same parent domain
+            critical_subdomains = ['admin', 'secure', 'login', 'auth', 'account', 'payment', 'billing']
+            
+            # Only flag as external if redirecting to/from critical subdomains
+            if any(sub in original_domain for sub in critical_subdomains) or \
+               any(sub in redirect_domain for sub in critical_subdomains):
+                return True
+            else:
+                # Non-critical subdomain changes within same parent domain are not external
+                return False
+    
+    # Default: domains are different, so it's an external redirect
+    return True
 
 def extract_redirect_url(response_text, payload):
     """Extract redirect URLs from response text"""
@@ -181,6 +243,41 @@ def normalize_url(url):
             url = 'http://' + url
     
     return url
+
+def verify_evil_com_redirect(url):
+    """Verify that a redirect to evil.com is legitimate by checking for specific markers"""
+    try:
+        import requests
+        from urllib.parse import urlparse
+        
+        # Parse the URL to check if it's pointing to evil.com or a subdomain
+        parsed_url = urlparse(url)
+        domain = parsed_url.netloc.lower()
+        
+        # Check if the domain is evil.com or a subdomain
+        if not (domain == 'evil.com' or domain.endswith('.evil.com')):
+            return False
+        
+        # Make a request to verify the content
+        response = requests.get(url, timeout=10, allow_redirects=True, verify=True)
+        
+        # Check for specific markers in the response
+        markers = [
+            'Evil.Com - We get it...Daily.',  # Title
+            'we get it... daily',             # Tagline
+            'check back daily',                # Footer text
+            'www.evil.com'                     # URL in content
+        ]
+        
+        # Count how many markers we find
+        marker_count = sum(1 for marker in markers if marker in response.text)
+        
+        # If we find at least 2 markers, it's likely the real evil.com
+        return marker_count >= 2
+    except Exception as e:
+        # If verification fails, log the error and return False
+        print(f"Error verifying evil.com redirect: {str(e)}")
+        return False
 
 def get_severity_score(vulnerability):
     """Calculate severity score for vulnerability"""
