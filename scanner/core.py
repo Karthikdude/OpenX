@@ -410,24 +410,7 @@ class Scanner:
         
         return vulnerabilities
     
-    def test_csrf_chaining(self, url, payload):
-        """Test for CSRF chaining opportunities based on 2025 research"""
-        vulnerabilities = []
         
-        # Check if this could be a GET-based CSRF target
-        csrf_indicators = ['/api/', '/account/', '/profile/', '/settings/', '/admin/', '/update/', '/delete/', '/change/']
-        
-        if any(indicator in url.lower() for indicator in csrf_indicators):
-            # Test if open redirect can bypass SameSite protections
-            test_vuln = self.test_url_parameter(url, 'redirect', payload)
-            for vuln in test_vuln:
-                vuln['method'] = 'CSRF Chain Potential'
-                vuln['severity'] = 'High'
-                vuln['description'] = 'Open redirect may bypass SameSite cookie protections for CSRF'
-                vulnerabilities.append(vuln)
-        
-        return vulnerabilities
-    
 
     
     def scan_single_url(self, url):
@@ -482,11 +465,6 @@ class Scanner:
                 advanced_vulns = self.test_advanced_scenarios(url, payload)
                 filtered_advanced_vulns = self.filter_false_positives(url, advanced_vulns)
                 vulnerabilities.extend(filtered_advanced_vulns)
-                
-                # Test CSRF chaining potential (2025 research)
-                csrf_vulns = self.test_csrf_chaining(url, payload)
-                filtered_csrf_vulns = self.filter_false_positives(url, csrf_vulns)
-                vulnerabilities.extend(filtered_csrf_vulns)
                 
                 # Apply delay if configured
                 if self.delay > 0:
