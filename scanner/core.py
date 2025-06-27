@@ -116,6 +116,76 @@ class Scanner:
             self.log(f"Request failed for {url}: {str(e)}", 'ERROR')
             return None
     
+    def is_legitimate_external_redirect(self, original_url, redirect_url, payload):
+        """Check if a redirect is a legitimate external redirect caused by our payload"""
+        # First check if it's actually an external redirect
+        if not is_external_redirect(original_url, redirect_url):
+            return False
+        
+        # Parse both URLs
+        original_parsed = urllib.parse.urlparse(original_url)
+        redirect_parsed = urllib.parse.urlparse(redirect_url)
+        
+        # Get domains
+        original_domain = original_parsed.netloc.lower()
+        redirect_domain = redirect_parsed.netloc.lower()
+        
+        # Remove port numbers for comparison
+        original_domain = original_domain.split(':')[0]
+        redirect_domain = redirect_domain.split(':')[0]
+        
+        # Remove www. prefix for comparison
+        original_domain = original_domain.replace('www.', '')
+        redirect_domain = redirect_domain.replace('www.', '')
+        
+        # If domains are the same, it's not an external redirect
+        if original_domain == redirect_domain:
+            return False
+        
+        # Check if the payload is actually causing the redirect
+        # The payload should be present in the redirect URL or should be the target domain
+        payload_lower = payload.lower()
+        redirect_url_lower = redirect_url.lower()
+        
+        # Extract domain from payload if it's a URL
+        payload_domain = None
+        if payload.startswith(('http://', 'https://')):
+            try:
+                payload_parsed = urllib.parse.urlparse(payload)
+                payload_domain = payload_parsed.netloc.lower().split(':')[0].replace('www.', '')
+            except:
+                pass
+        elif payload.startswith('//'):
+            try:
+                payload_parsed = urllib.parse.urlparse('http:' + payload)
+                payload_domain = payload_parsed.netloc.lower().split(':')[0].replace('www.', '')
+            except:
+                pass
+        elif '.' in payload and not payload.startswith('./'):
+            # Assume it's a domain
+            payload_domain = payload.lower().split(':')[0].replace('www.', '')
+        
+        # Check if the redirect is actually to our payload domain
+        if payload_domain:
+            if payload_domain == redirect_domain:
+                return True
+            # Also check if payload domain is in the redirect URL
+            if payload_domain in redirect_url_lower:
+                return True
+        
+        # Check if the payload is reflected in the redirect URL
+        if payload_lower in redirect_url_lower:
+            return True
+        
+        # Additional check: if the redirect URL contains our test domains
+        test_domains = ['evil.com']
+        for test_domain in test_domains:
+            if test_domain in redirect_url_lower and test_domain in payload_lower:
+                return True
+        
+        # If none of the above conditions are met, it's likely a false positive
+        return False
+    
     def test_url_parameter(self, base_url, param_name, payload):
         """Test a specific URL parameter with a payload"""
         vulnerabilities = []
@@ -146,41 +216,45 @@ class Scanner:
         # Check for redirect response
         if response.status_code in [301, 302, 303, 307, 308]:
             location = response.headers.get('Location', '')
-            if location and is_external_redirect(base_url, location):
-                # Check if it's an evil.com redirect and needs verification
-                is_evil_com = 'evil.com' in location.lower()
-                verified = True  # Default to true for non-evil.com redirects
-                
-                # Verify evil.com redirects if enabled
-                if is_evil_com and self.verify_evil_com:
-                    self.log(f"Verifying evil.com redirect: {location}", 'VERBOSE', Fore.YELLOW)
-                    verified = verify_evil_com_redirect(location)
-                    if not verified:
-                        self.log(f"Failed to verify evil.com redirect: {location}", 'VERBOSE', Fore.RED)
-                
-                # Only report as vulnerability if verified or verification is disabled
-                if verified or not self.verify_evil_com:
-                    vulnerability = {
-                        'url': test_url,
-                        'parameter': param_name,
-                        'payload': payload,
-                        'method': 'URL Parameter',
-                        'status_code': response.status_code,
-                        'location_header': location,
-                        'severity': 'High',
-                        'description': f'Open redirect via {param_name} parameter',
-                        'verified': verified
-                    }
-                    vulnerabilities.append(vulnerability)
-                    verification_status = "(verified)" if verified else "(unverified)"
-                    self.log(f"Found vulnerability: {test_url} -> {location} {verification_status}", 'VULN')
+            if location:
+                # Check if this is actually an external redirect caused by our payload
+                if self.is_legitimate_external_redirect(base_url, location, payload):
+                    # Check if it's an evil.com redirect and needs verification
+                    is_evil_com = 'evil.com' in location.lower()
+                    verified = True  # Default to true for non-evil.com redirects
+                    
+                    # Verify evil.com redirects if enabled
+                    if is_evil_com and self.verify_evil_com:
+                        self.log(f"Verifying evil.com redirect: {location}", 'VERBOSE', Fore.YELLOW)
+                        verified = verify_evil_com_redirect(location)
+                        if not verified:
+                            self.log(f"Failed to verify evil.com redirect: {location}", 'VERBOSE', Fore.RED)
+                    
+                    # Only report as vulnerability if verified or verification is disabled
+                    if verified or not self.verify_evil_com:
+                        vulnerability = {
+                            'url': test_url,
+                            'parameter': param_name,
+                            'payload': payload,
+                            'method': 'URL Parameter',
+                            'status_code': response.status_code,
+                            'location_header': location,
+                            'severity': 'High',
+                            'description': f'Open redirect via {param_name} parameter',
+                            'verified': verified
+                        }
+                        vulnerabilities.append(vulnerability)
+                        verification_status = "(verified)" if verified else "(unverified)"
+                        self.log(f"Found vulnerability: {test_url} -> {location} {verification_status}", 'VULN')
+                else:
+                    self.log(f"Filtered false positive: {test_url} -> {location} (not a legitimate external redirect)", 'VERBOSE', Fore.YELLOW)
         
         # Test with redirect following for deeper analysis
         if self.follow_redirects > 0:
             response_full = self.make_request(test_url, allow_redirects=True)
             if response_full and response_full.url != test_url:
                 final_url = response_full.url
-                if is_external_redirect(base_url, final_url):
+                if self.is_legitimate_external_redirect(base_url, final_url, payload):
                     # Check if this is a new vulnerability or already found
                     existing = any(v['location_header'] == final_url for v in vulnerabilities)
                     if not existing:
@@ -211,12 +285,14 @@ class Scanner:
                             vulnerabilities.append(vulnerability)
                             verification_status = "(verified)" if verified else "(unverified)"
                             self.log(f"Found redirect chain vulnerability: {test_url} -> {final_url} {verification_status}", 'VULN')
+                else:
+                    self.log(f"Filtered false positive redirect chain: {test_url} -> {final_url}", 'VERBOSE', Fore.YELLOW)
         
         # Check response body for JavaScript/Meta redirects
         if response.content:
             js_redirects = parse_response_for_redirects(response.text, payload)
             for js_redirect in js_redirects:
-                if is_external_redirect(base_url, js_redirect):
+                if self.is_legitimate_external_redirect(base_url, js_redirect, payload):
                     # Check if it's an evil.com redirect and needs verification
                     is_evil_com = 'evil.com' in js_redirect.lower()
                     verified = True  # Default to true for non-evil.com redirects
@@ -296,34 +372,35 @@ class Scanner:
             
             # Check if the header value is reflected in response
             location = response.headers.get('Location', '')
-            if location and payload in location and is_external_redirect(url, location):
-                # Check if it's an evil.com redirect and needs verification
-                is_evil_com = 'evil.com' in location.lower()
-                verified = True  # Default to true for non-evil.com redirects
-                
-                # Verify evil.com redirects if enabled
-                if is_evil_com and self.verify_evil_com:
-                    self.log(f"Verifying evil.com header redirect: {location}", 'VERBOSE', Fore.YELLOW)
-                    verified = verify_evil_com_redirect(location)
-                    if not verified:
-                        self.log(f"Failed to verify evil.com header redirect: {location}", 'VERBOSE', Fore.RED)
-                
-                # Only report as vulnerability if verified or verification is disabled
-                if verified or not self.verify_evil_com:
-                    vulnerability = {
-                        'url': url,
-                        'parameter': header_name,
-                        'payload': payload,
-                        'method': 'Header Injection',
-                        'status_code': response.status_code,
-                        'location_header': location,
-                        'severity': 'High',
-                        'description': f'Open redirect via {header_name} header injection',
-                        'verified': verified
-                    }
-                    vulnerabilities.append(vulnerability)
-                    verification_status = "(verified)" if verified else "(unverified)"
-                    self.log(f"Found header injection vulnerability: {url} ({header_name}) -> {location} {verification_status}", 'VULN')
+            if location and payload in location:
+                if self.is_legitimate_external_redirect(url, location, payload):
+                    # Check if it's an evil.com redirect and needs verification
+                    is_evil_com = 'evil.com' in location.lower()
+                    verified = True  # Default to true for non-evil.com redirects
+                    
+                    # Verify evil.com redirects if enabled
+                    if is_evil_com and self.verify_evil_com:
+                        self.log(f"Verifying evil.com header redirect: {location}", 'VERBOSE', Fore.YELLOW)
+                        verified = verify_evil_com_redirect(location)
+                        if not verified:
+                            self.log(f"Failed to verify evil.com header redirect: {location}", 'VERBOSE', Fore.RED)
+                    
+                    # Only report as vulnerability if verified or verification is disabled
+                    if verified or not self.verify_evil_com:
+                        vulnerability = {
+                            'url': url,
+                            'parameter': header_name,
+                            'payload': payload,
+                            'method': 'Header Injection',
+                            'status_code': response.status_code,
+                            'location_header': location,
+                            'severity': 'High',
+                            'description': f'Open redirect via {header_name} header injection',
+                            'verified': verified
+                        }
+                        vulnerabilities.append(vulnerability)
+                        verification_status = "(verified)" if verified else "(unverified)"
+                        self.log(f"Found header injection vulnerability: {url} ({header_name}) -> {location} {verification_status}", 'VULN')
         
         return vulnerabilities
     

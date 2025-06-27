@@ -162,14 +162,7 @@ class PayloadManager:
             "http://evil.com/legitapp.com",
             "http://legitapp.com@evil.com",
             
-            # IP address variations
-            "http://127.0.0.1",
-            "http://0.0.0.0",
-            "http://192.168.1.1",
-            "http://10.0.0.1",
-            "http://172.16.0.1",
-            "http://localhost",
-            
+                        
             # Octal/Hex IP bypasses
             "http://0177.0.0.1",  # 127 in octal
             "http://0x7f.0.0.1",   # 127 in hex
